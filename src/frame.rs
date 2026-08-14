@@ -156,10 +156,18 @@ impl Frame {
             // Before the verb a joining word is joining subjects, and two subjects joined are
             // plural however singular each was: "agreement and predication are structural". After
             // the verb there is nothing left to join but clauses, so a fresh one starts.
-            Tag::Coordinator if !self.tensed && self.subject != Subject::Empty => Self {
-                subject: Subject::Other,
-                ..carried
-            },
+            Tag::Coordinator
+                if !self.tensed
+                    && matches!(
+                        self.subject,
+                        Subject::Third | Subject::First | Subject::Other
+                    ) =>
+            {
+                Self {
+                    subject: Subject::Other,
+                    ..carried
+                }
+            }
             Tag::Coordinator => Self {
                 subject: Subject::Empty,
                 tensed: false,

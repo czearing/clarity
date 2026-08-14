@@ -8,7 +8,7 @@ use fitkit::fit::recover;
 use fitkit::Reported;
 
 use crate::grammar::{
-    disagrees, doubles, is_imperative, subjectless, unmet, why, Grammar, Rule, Sentence, State,
+    disagrees, doubles, is_imperative, stranded, subjectless, unmet, why, Grammar, Rule, Sentence, State,
 };
 use crate::lexicon::Lexicon;
 use crate::register::{Convention, Register};
@@ -216,6 +216,11 @@ fn broken_agreement(reading: &[State]) -> Vec<Fault> {
                 Some(Fault {
                     at,
                     rule: Rule::Subjectless,
+                })
+            } else if stranded(pair[0].frame, pair[1].tag) {
+                Some(Fault {
+                    at,
+                    rule: Rule::StrandedParticiple,
                 })
             } else {
                 unmet(pair[0].frame, pair[1].tag).map(|rule| Fault { at, rule })

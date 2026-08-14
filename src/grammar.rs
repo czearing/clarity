@@ -105,14 +105,6 @@ pub fn why(from: Tag, to: Tag) -> Option<Rule> {
         (Tag::Noun(Number::Plural), Tag::Noun(_) | Tag::Proper(_)) => {
             Some(Rule::AttributiveSingular)
         }
-        (before, Tag::Verb(Form::Participle))
-            if !matches!(
-                before,
-                Tag::Verb(_) | Tag::Modal | Tag::Adverb | Tag::Determiner(_) | Tag::Adjective
-            ) =>
-        {
-            Some(Rule::StrandedParticiple)
-        }
         _ => None,
     }
 }
@@ -497,6 +489,11 @@ impl Fit for Grammar {
             } else {
                 0.0
             }
+            + if stranded(from.frame, to.tag) {
+                BREACH
+            } else {
+                0.0
+            }
     }
 
     fn into(&self, to: &State) -> Option<Vec<u32>> {
@@ -549,6 +546,21 @@ pub fn unmet(frame: Frame, tag: Tag) -> Option<Rule> {
         return None;
     }
     Some(rule)
+}
+
+/// Whether a participle has nothing to belong to.
+///
+/// A participle is not a verb by itself. It either follows an auxiliary, as in "was guessed", or
+/// it modifies a noun phrase, as in "the tag chosen for each token", and both of those leave the
+/// clause with something already in it. Only a participle in a clause that has read no subject and
+/// taken no tense is stranded, so the rule is one question about the clause rather than a list of
+/// the words that may precede it.
+#[must_use]
+pub fn stranded(frame: Frame, tag: Tag) -> bool {
+    tag == Tag::Verb(Form::Participle)
+        && frame.subject == Subject::Empty
+        && !frame.tensed
+        && frame.wants == Wants::Nothing
 }
 
 /// Whether a tensed verb is being taken with nothing to be the subject of.

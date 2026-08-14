@@ -10,8 +10,6 @@
 //! passage is read under every register and the one that explains it for least wins, so technical
 //! prose, a message, and a poem separate themselves without any of them being described.
 
-use fitkit::core::{Evidence, Span};
-use fitkit::fit::{recover, Fit, Model, Segmented};
 
 use crate::check::{check_in, judge, Reading, Report};
 use crate::text::Text;
@@ -102,88 +100,109 @@ impl Register {
         Self(self.0 | (1 << bit))
     }
 
-    /// What choosing this register costs before any fault is counted.
-    fn price(self) -> f64 {
-        PERMIT * f64::from(self.0.count_ones())
+    /// How many conventions this register lets go, which breaks ties toward reading strictly.
+    fn breadth(self) -> u32 {
+        self.0.count_ones()
     }
 }
 
 /// What one thing the reading cannot explain costs.
 const FAULT: f64 = 100.0;
 
-/// What letting one convention go costs for one unit. Half a fault, so a convention is dropped
-/// only when doing so explains more than half the units it covers.
-const PERMIT: f64 = FAULT / 2.0;
+/// What adopting one convention costs a passage, paid once however many units are read under it.
+///
+/// More than a fault and less than two, so a convention broken once is a mistake and a convention
+/// broken twice is how the passage is written. Nothing else decides where that line falls.
+const ADOPT: f64 = FAULT * 1.5;
 
-/// What changing register costs, which keeps it from following every unit.
-const SWITCH: f64 = FAULT;
-
-impl Segmented for Text {
-    fn extent(&self) -> usize {
-        self.units.len()
-    }
-
-    fn slice(&self, span: Span) -> Self {
-        Self {
-            units: self.units[span.start..span.end.min(self.units.len())].to_vec(),
-        }
-    }
-
-    fn splice(&mut self, span: Span, part: Self) {
-        self.units
-            .splice(span.start..span.end.min(self.units.len()), part.units);
-    }
-}
+/// How many registers a passage may weigh at once, which bounds the search when units disagree.
+const SPREAD: usize = 8;
 
 /// Recovers what a passage holds itself to.
+///
+/// A register is not a run. A source file alternates one line summaries with whole paragraphs and a
+/// poem may break off mid page, so pricing a change of register by adjacency charges writing for its
+/// shape rather than its variety. What a passage pays here is each register it adopts, once, after
+/// which any unit may be read under it.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Voice;
 
-impl Model for Voice {
-    type Signal = Text;
-    type Params = Register;
-
-    fn name(&self) -> &'static str {
-        "register"
-    }
-
-    fn candidates(&self) -> Vec<Register> {
-        Register::every()
-    }
-
-    fn render(&self, input: &Text, _params: &Register) -> Text {
-        input.clone()
-    }
-}
-
-impl Fit for Voice {
-    // The reading, not the sentence. A register decides which faults are held against a passage,
-    // never what its words are, so reading a unit once and judging that reading under each
-    // register gives the same answer as reading it under each register, for a thirty second of
-    // the work.
-    type Evidence = Reading;
-
-    fn evidence(&self, reference: &Text) -> Vec<Evidence<Reading>> {
-        reference
-            .units
-            .iter()
-            .enumerate()
-            .map(|(index, unit)| Evidence::certain(Span::new(index, index + 1), Reading::of(unit)))
-            .collect()
-    }
-
-    fn emission(&self, evidence: &Reading, params: &Register) -> f64 {
-        let report = judge(evidence, *params);
+impl Voice {
+    /// What a reading costs under a register, counting all it does not excuse.
+    fn cost(reading: &Reading, register: Register) -> f64 {
+        let report = judge(reading, register);
         let unexplained = report.faults.len() + report.unknown.len() + report.notes.len();
-        FAULT * f64::from(u32::try_from(unexplained).unwrap_or(u32::MAX)) + params.price()
+        FAULT * f64::from(u32::try_from(unexplained).unwrap_or(u32::MAX))
     }
 
-    fn transition(&self, from: &Register, to: &Register) -> f64 {
-        if from == to {
-            0.0
-        } else {
-            SWITCH
+    /// The least register that excuses everything excusable in one reading.
+    ///
+    /// Waiving more than this costs without explaining, so no unit wants a larger register and the
+    /// registers a passage might adopt are exactly the ones its own units ask for.
+    fn asked_for(reading: &Reading) -> Register {
+        let strict = Self::cost(reading, Register::STRICT);
+        Convention::ALL
+            .into_iter()
+            .filter(|held| Self::cost(reading, Register::STRICT.without(*held)) < strict)
+            .fold(Register::STRICT, Register::without)
+    }
+
+    /// Which adopted register a reading is read under, and what it still costs there.
+    ///
+    /// A register is not free to a unit that does not need it, so each unit reaches for the
+    /// smallest one that answers for it and the rest of the passage is not read loosely.
+    fn settle(reading: &Reading, adopted: &[Register]) -> (Register, f64) {
+        adopted
+            .iter()
+            .map(|register| (*register, Self::cost(reading, *register)))
+            .min_by(|left, right| {
+                left.1
+                    .partial_cmp(&right.1)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then(left.0.breadth().cmp(&right.0.breadth()))
+            })
+            .unwrap_or((Register::STRICT, 0.0))
+    }
+
+    /// What a passage pays to adopt a set of registers and read every unit under the best of them.
+    fn spend(readings: &[Reading], adopted: &[Register]) -> f64 {
+        let paid: f64 = adopted
+            .iter()
+            .map(|register| ADOPT * f64::from(register.breadth()))
+            .sum();
+        let borne: f64 = readings
+            .iter()
+            .map(|reading| Self::settle(reading, adopted).1)
+            .sum();
+        paid + borne
+    }
+
+    /// The registers a passage adopts, which is the cheapest set drawn from what its units ask for.
+    fn adopted(readings: &[Reading]) -> Vec<Register> {
+        let mut asked: Vec<Register> = Vec::new();
+        for reading in readings {
+            let wanted = Self::asked_for(reading);
+            if wanted != Register::STRICT && !asked.contains(&wanted) {
+                asked.push(wanted);
+            }
         }
+        asked.truncate(SPREAD);
+        let mut best = vec![Register::STRICT];
+        let mut least = Self::spend(readings, &best);
+        for choice in 1..(1u32 << asked.len()) {
+            let mut set = vec![Register::STRICT];
+            for (bit, register) in asked.iter().enumerate() {
+                if choice & (1 << bit) != 0 {
+                    set.push(*register);
+                }
+            }
+            let spent = Self::spend(readings, &set);
+            if spent < least {
+                least = spent;
+                best = set;
+            }
+        }
+        best
     }
 }
 
@@ -202,11 +221,15 @@ impl Fit for Voice {
 #[must_use]
 pub fn read(passage: &str) -> Vec<(Register, Report)> {
     let text = Text::read(passage);
-    let plan = recover(&Voice, &text);
+    let readings: Vec<Reading> = text.units.iter().map(Reading::of).collect();
+    let adopted = Voice::adopted(&readings);
     text.units
         .iter()
-        .zip(plan.controls)
-        .map(|(unit, control)| (control.params, check_in(unit, control.params)))
+        .zip(&readings)
+        .map(|(unit, reading)| {
+            let register = Voice::settle(reading, &adopted).0;
+            (register, check_in(unit, register))
+        })
         .collect()
 }
 
