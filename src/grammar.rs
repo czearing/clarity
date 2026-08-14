@@ -114,16 +114,6 @@ fn modifies_a_noun(form: Form) -> bool {
     matches!(form, Form::Gerund | Form::Participle | Form::Past)
 }
 
-/// Whether a tag can close a clause whose verb was left out, as in "if any word can".
-fn ends_a_clause(tag: Tag) -> bool {
-    matches!(tag, Tag::Mark(_) | Tag::Coordinator | Tag::Subordinator)
-}
-
-/// Whether a tag can stand between a modal or infinitival "to" and the plain verb it governs.
-fn leads_to_verb(tag: Tag) -> bool {
-    matches!(tag, Tag::Verb(Form::Base) | Tag::Adverb)
-}
-
 /// Whether a form carries tense, and so must agree with a subject.
 #[must_use]
 pub fn is_tensed(form: Form) -> bool {
@@ -424,15 +414,23 @@ impl Fit for Grammar {
             // A tensed verb with nothing to answer to is as broken as no verb at all, and charging
             // for it is what stops an unknown word being pressed into service as the verb a
             // fragment does not have.
-            let stands = params.frame.tensed && params.frame.subject != Subject::None;
+            let stands =
+                (params.frame.tensed || params.frame.ever) && params.frame.subject != Subject::None;
             let clause = if stands { 0.0 } else { BREACH };
+            // A demand the sentence never answered is charged here for the same reason: a modal
+            // left waiting is not free merely because the sentence stopped before the verb came.
+            let owed = if params.frame.wants == Wants::Nothing {
+                0.0
+            } else {
+                BREACH
+            };
             // A sentence that ends inside a subordinate clause is answerable for both of them, so
             // a clause opened and never given a verb cannot be a free place to hide one.
             let held = match params.frame.outer {
                 Some((_, false)) => BREACH,
                 _ => 0.0,
             };
-            clause + held
+            clause + held + owed
         } else {
             0.0
         };
@@ -516,6 +514,9 @@ impl Fit for Grammar {
 /// cabinets is missing`, and there is no rule about stepping over the words in between.
 #[must_use]
 pub fn disagrees(frame: Frame, tag: Tag) -> bool {
+    // A verb answering a demand is not the verb the subject agrees with. "We can no longer buy it"
+    // has its agreement settled by "can", and asking "buy" to agree as well would fault every
+    // sentence that puts a word between a modal and its verb.
     matches!(
         (frame.subject, tag),
         (Subject::Third, Tag::Verb(Form::Base | Form::PastPlural))
@@ -561,6 +562,14 @@ pub fn stranded(frame: Frame, tag: Tag) -> bool {
         && frame.subject == Subject::Empty
         && !frame.tensed
         && frame.wants == Wants::Nothing
+}
+
+/// Whether a tag can close a clause whose verb was left out, as in "if any word can".
+fn ends_a_clause(tag: Tag) -> bool {
+    matches!(tag, Tag::Mark(_) | Tag::Coordinator | Tag::Subordinator)
+}
+fn leads_to_verb(tag: Tag) -> bool {
+    matches!(tag, Tag::Verb(Form::Base) | Tag::Adverb)
 }
 
 /// Whether a tensed verb is being taken with nothing to be the subject of.

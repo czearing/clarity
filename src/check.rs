@@ -8,12 +8,13 @@ use fitkit::fit::recover;
 use fitkit::Reported;
 
 use crate::grammar::{
-    disagrees, doubles, is_imperative, stranded, subjectless, unmet, why, Grammar, Rule, Sentence, State,
+    disagrees, doubles, is_imperative, stranded, subjectless, unmet, why, Grammar, Rule, Sentence,
+    State,
 };
 use crate::lexicon::Lexicon;
 use crate::register::{Convention, Register};
 use crate::style::Note;
-use crate::tag::Tag;
+use crate::tag::{Break, Tag};
 use crate::token::Token;
 
 /// One broken rule and where it broke.
@@ -162,6 +163,16 @@ pub fn judge(reading: &Reading, register: Register) -> Report {
         faults.push(Fault {
             at: Span::new(0, tags.len()),
             rule: Rule::NoPredicate,
+        });
+    }
+    if let Some(rule) = reading
+        .states
+        .last()
+        .and_then(|state| unmet(state.frame, Tag::Mark(Break::Stop)))
+    {
+        faults.push(Fault {
+            at: Span::new(tags.len().saturating_sub(1), tags.len()),
+            rule,
         });
     }
     if !register.waives(Convention::Marks) && !marked(sentence) {

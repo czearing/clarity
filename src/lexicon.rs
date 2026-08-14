@@ -856,7 +856,13 @@ fn inflected(key: &str, capitalised: bool) -> Vec<Tag> {
     if capitalised {
         tags.retain(|tag| !matches!(tag, Tag::Noun(_)));
     }
-    if tags.is_empty() && key.len() >= 2 {
+    // An ending narrows what a word is likeliest to be, never what it can be: "multiply" ends in
+    // the adverb's ending and is a verb. The two open classes are therefore always offered, last,
+    // where the ranking makes them cost more than any reading the ending actually supports.
+    let inflected = tags
+        .iter()
+        .any(|tag| matches!(tag, Tag::Verb(_) | Tag::Noun(Number::Plural)));
+    if key.len() >= 2 && !inflected {
         tags.push(Tag::Noun(Number::Singular));
         tags.push(Tag::Verb(Form::Base));
     }

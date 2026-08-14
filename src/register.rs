@@ -10,7 +10,6 @@
 //! passage is read under every register and the one that explains it for least wins, so technical
 //! prose, a message, and a poem separate themselves without any of them being described.
 
-
 use crate::check::{check_in, judge, Reading, Report};
 use crate::text::Text;
 
