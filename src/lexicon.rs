@@ -38,6 +38,25 @@ const DETERMINERS: &[(&str, &[Number])] = &[
     ("no", &[Number::Singular, Number::Plural]),
     ("all", &[Number::Singular, Number::Plural]),
     ("most", &[Number::Singular, Number::Plural]),
+    ("each", &[Number::Singular]),
+    ("every", &[Number::Singular]),
+    ("either", &[Number::Singular]),
+    ("neither", &[Number::Singular]),
+    ("another", &[Number::Singular]),
+    ("one", &[Number::Singular]),
+    ("two", &[Number::Plural]),
+    ("three", &[Number::Plural]),
+    ("four", &[Number::Plural]),
+    ("five", &[Number::Plural]),
+    ("six", &[Number::Plural]),
+    ("seven", &[Number::Plural]),
+    ("eight", &[Number::Plural]),
+    ("nine", &[Number::Plural]),
+    ("ten", &[Number::Plural]),
+    ("enough", &[Number::Singular, Number::Plural]),
+    ("such", &[Number::Singular, Number::Plural]),
+    ("whatever", &[Number::Singular, Number::Plural]),
+    ("whichever", &[Number::Singular, Number::Plural]),
 ];
 
 /// Personal pronouns, exhaustive for the standard paradigm.
@@ -62,10 +81,148 @@ const PRONOUNS: &[(&str, Person, Number, Case)] = &[
     ("nobody", Person::Third, Number::Singular, Case::Either),
     ("something", Person::Third, Number::Singular, Case::Either),
     ("nothing", Person::Third, Number::Singular, Case::Either),
+    ("anything", Person::Third, Number::Singular, Case::Either),
+    ("everything", Person::Third, Number::Singular, Case::Either),
+    ("anybody", Person::Third, Number::Singular, Case::Either),
+    ("none", Person::Third, Number::Singular, Case::Either),
+    ("this", Person::Third, Number::Singular, Case::Either),
+    ("that", Person::Third, Number::Singular, Case::Either),
+    ("these", Person::Third, Number::Plural, Case::Either),
+    ("those", Person::Third, Number::Plural, Case::Either),
+    ("one", Person::Third, Number::Singular, Case::Either),
+    ("ones", Person::Third, Number::Plural, Case::Either),
+    ("others", Person::Third, Number::Plural, Case::Either),
+    ("itself", Person::Third, Number::Singular, Case::Object),
+    ("themselves", Person::Third, Number::Plural, Case::Object),
+    ("myself", Person::First, Number::Singular, Case::Object),
+    ("yourself", Person::Second, Number::Singular, Case::Object),
+    ("himself", Person::Third, Number::Singular, Case::Object),
+    ("herself", Person::Third, Number::Singular, Case::Object),
+    ("ourselves", Person::First, Number::Plural, Case::Object),
+    ("each", Person::Third, Number::Singular, Case::Either),
+    ("either", Person::Third, Number::Singular, Case::Either),
+    ("neither", Person::Third, Number::Singular, Case::Either),
+    ("enough", Person::Third, Number::Singular, Case::Either),
+    ("all", Person::Third, Number::Plural, Case::Either),
+    ("some", Person::Third, Number::Plural, Case::Either),
+    ("any", Person::Third, Number::Singular, Case::Either),
+    ("most", Person::Third, Number::Plural, Case::Either),
+    ("both", Person::Third, Number::Plural, Case::Either),
+    ("many", Person::Third, Number::Plural, Case::Either),
+    ("few", Person::Third, Number::Plural, Case::Either),
+    ("several", Person::Third, Number::Plural, Case::Either),
+    ("another", Person::Third, Number::Singular, Case::Either),
+    ("such", Person::Third, Number::Singular, Case::Either),
+    ("whatever", Person::Third, Number::Singular, Case::Either),
+    ("whichever", Person::Third, Number::Singular, Case::Either),
 ];
 
 /// Verb forms that no rule can derive, listed by form.
 const IRREGULAR_VERBS: &[(&str, &[Form])] = &[
+    ("broke", &[Form::Past]),
+    ("spoke", &[Form::Past]),
+    ("chose", &[Form::Past]),
+    ("froze", &[Form::Past]),
+    ("stole", &[Form::Past]),
+    ("drove", &[Form::Past]),
+    ("rose", &[Form::Past]),
+    ("arose", &[Form::Past]),
+    ("threw", &[Form::Past]),
+    ("grew", &[Form::Past]),
+    ("blew", &[Form::Past]),
+    ("drew", &[Form::Past]),
+    ("flew", &[Form::Past]),
+    ("began", &[Form::Past]),
+    ("rang", &[Form::Past]),
+    ("sang", &[Form::Past]),
+    ("sank", &[Form::Past]),
+    ("swam", &[Form::Past]),
+    ("became", &[Form::Past]),
+    ("forgave", &[Form::Past]),
+    ("fell", &[Form::Past]),
+    ("held", &[Form::Past, Form::Participle]),
+    ("left", &[Form::Past, Form::Participle]),
+    ("felt", &[Form::Past, Form::Participle]),
+    ("kept", &[Form::Past, Form::Participle]),
+    ("meant", &[Form::Past, Form::Participle]),
+    ("met", &[Form::Past, Form::Participle]),
+    ("paid", &[Form::Past, Form::Participle]),
+    ("sat", &[Form::Past, Form::Participle]),
+    ("sent", &[Form::Past, Form::Participle]),
+    ("spent", &[Form::Past, Form::Participle]),
+    ("stood", &[Form::Past, Form::Participle]),
+    ("understood", &[Form::Past, Form::Participle]),
+    ("won", &[Form::Past, Form::Participle]),
+    ("lost", &[Form::Past, Form::Participle]),
+    ("taught", &[Form::Past, Form::Participle]),
+    ("caught", &[Form::Past, Form::Participle]),
+    ("brought", &[Form::Past, Form::Participle]),
+    ("sought", &[Form::Past, Form::Participle]),
+    ("bought", &[Form::Past, Form::Participle]),
+    ("fought", &[Form::Past, Form::Participle]),
+    ("told", &[Form::Past, Form::Participle]),
+    ("sold", &[Form::Past, Form::Participle]),
+    ("bound", &[Form::Past, Form::Participle]),
+    ("wound", &[Form::Past, Form::Participle]),
+    ("led", &[Form::Past, Form::Participle]),
+    ("fed", &[Form::Past, Form::Participle]),
+    ("bled", &[Form::Past, Form::Participle]),
+    ("laid", &[Form::Past, Form::Participle]),
+    ("heard", &[Form::Past, Form::Participle]),
+    ("built", &[Form::Past, Form::Participle]),
+    ("dealt", &[Form::Past, Form::Participle]),
+    ("slept", &[Form::Past, Form::Participle]),
+    ("swept", &[Form::Past, Form::Participle]),
+    ("wept", &[Form::Past, Form::Participle]),
+    ("crept", &[Form::Past, Form::Participle]),
+    ("lent", &[Form::Past, Form::Participle]),
+    ("bent", &[Form::Past, Form::Participle]),
+    ("rode", &[Form::Past]),
+    ("hid", &[Form::Past]),
+    ("bit", &[Form::Past]),
+    ("hit", &[Form::Base, Form::Past, Form::Participle]),
+    ("let", &[Form::Base, Form::Past, Form::Participle]),
+    ("set", &[Form::Base, Form::Past, Form::Participle]),
+    ("cut", &[Form::Base, Form::Past, Form::Participle]),
+    ("cost", &[Form::Base, Form::Past, Form::Participle]),
+    ("shut", &[Form::Base, Form::Past, Form::Participle]),
+    ("split", &[Form::Base, Form::Past, Form::Participle]),
+    ("spread", &[Form::Base, Form::Past, Form::Participle]),
+    ("read", &[Form::Base, Form::Past, Form::Participle]),
+    ("fit", &[Form::Base, Form::Past, Form::Participle]),
+    ("quit", &[Form::Base, Form::Past, Form::Participle]),
+    ("broken", &[Form::Participle]),
+    ("spoken", &[Form::Participle]),
+    ("chosen", &[Form::Participle]),
+    ("frozen", &[Form::Participle]),
+    ("stolen", &[Form::Participle]),
+    ("driven", &[Form::Participle]),
+    ("risen", &[Form::Participle]),
+    ("arisen", &[Form::Participle]),
+    ("thrown", &[Form::Participle]),
+    ("grown", &[Form::Participle]),
+    ("blown", &[Form::Participle]),
+    ("drawn", &[Form::Participle]),
+    ("flown", &[Form::Participle]),
+    ("begun", &[Form::Participle]),
+    ("rung", &[Form::Participle]),
+    ("sung", &[Form::Participle]),
+    ("sunk", &[Form::Participle]),
+    ("swum", &[Form::Participle]),
+    ("become", &[Form::Participle]),
+    ("forgiven", &[Form::Participle]),
+    ("fallen", &[Form::Participle]),
+    ("shown", &[Form::Participle]),
+    ("worn", &[Form::Participle]),
+    ("torn", &[Form::Participle]),
+    ("sworn", &[Form::Participle]),
+    ("born", &[Form::Participle]),
+    ("hidden", &[Form::Participle]),
+    ("bitten", &[Form::Participle]),
+    ("ridden", &[Form::Participle]),
+    ("forgotten", &[Form::Participle]),
+    ("gotten", &[Form::Participle]),
+    ("proven", &[Form::Participle]),
     ("be", &[Form::Base]),
     ("am", &[Form::Base]),
     ("is", &[Form::ThirdSingular]),
@@ -191,12 +348,20 @@ const INVARIANT_NOUNS: &[&str] = &[
 /// so it is listed among the verbs instead. "wo", "ca", and "sha" are what splitting "won't",
 /// "can't", and "shan't" leaves behind.
 const MODALS: &[&str] = &[
-    "can", "could", "may", "might", "shall", "should", "will", "would", "must", "'ll", "wo", "ca",
-    "sha",
+    "cannot", "can", "could", "may", "might", "shall", "should", "will", "would", "must", "'ll",
+    "wo", "ca", "sha",
 ];
 
 /// Prepositions, the common core.
 const PREPOSITIONS: &[&str] = &[
+    "per",
+    "via",
+    "versus",
+    "amid",
+    "atop",
+    "amongst",
+    "beforehand",
+    "as",
     "about",
     "above",
     "across",
@@ -251,8 +416,41 @@ const COORDINATORS: &[&str] = &["and", "or", "but", "nor", "yet", "so"];
 
 /// Subordinators, the common core.
 const SUBORDINATORS: &[&str] = &[
-    "although", "because", "before", "if", "once", "since", "though", "unless", "until", "when",
-    "whenever", "where", "whereas", "wherever", "while", "whether", "that", "than",
+    "although",
+    "because",
+    "before",
+    "if",
+    "once",
+    "since",
+    "though",
+    "unless",
+    "until",
+    "when",
+    "whenever",
+    "where",
+    "whereas",
+    "wherever",
+    "while",
+    "whether",
+    "that",
+    "than",
+    "as",
+    "so",
+    "why",
+    "how",
+    "unlike",
+    "which",
+    "what",
+    "whom",
+    "whose",
+    "whichever",
+    "whatever",
+    "whoever",
+    "after",
+    "wherein",
+    "whereby",
+    "lest",
+    "albeit",
 ];
 
 /// Adverbs that no suffix reveals.
@@ -439,6 +637,47 @@ pub fn places(key: &str) -> bool {
     listed(key).is_some()
 }
 
+/// Whether a word belongs to a closed class, so it frames a point rather than carrying one.
+///
+/// Read off the readings the lexicon offers rather than from a separate list, so the two can never
+/// drift apart. A word with any open class reading, even a rare one, is treated as carrying
+/// content, because a word that can name a thing usually is naming one.
+#[must_use]
+pub fn is_closed(key: &str) -> bool {
+    let Some(found) = listed(key) else {
+        return false;
+    };
+    !found.is_empty()
+        && found.iter().all(|tag| {
+            matches!(
+                tag,
+                Tag::Determiner(_)
+                    | Tag::Pronoun(..)
+                    | Tag::Preposition
+                    | Tag::Coordinator
+                    | Tag::Subordinator
+                    | Tag::Modal
+                    | Tag::To
+                    | Tag::Mark
+            ) || is_auxiliary(key)
+        })
+}
+
+/// Whether a word can carry "n't", which only an auxiliary or a modal can.
+#[must_use]
+pub fn is_auxiliary(key: &str) -> bool {
+    const AUXILIARIES: &[&str] = &[
+        "do", "does", "did", "is", "are", "was", "were", "has", "have", "had", "ca", "wo", "sha",
+    ];
+    AUXILIARIES.contains(&key) || MODALS.contains(&key)
+}
+
+/// Whether a word can carry a contracted verb, which only a pronoun or a deictic can.
+#[must_use]
+pub fn is_pronoun(key: &str) -> bool {
+    PRONOUNS.iter().any(|(word, ..)| *word == key) || matches!(key, "there" | "here" | "who")
+}
+
 /// Every pronoun tag the lexicon can produce, without repeats.
 #[must_use]
 pub fn pronouns() -> Vec<Tag> {
@@ -594,8 +833,10 @@ fn inflected(key: &str, capitalised: bool) -> Vec<Tag> {
     }
     if let Some(stem) = key.strip_suffix('s') {
         if stem.len() >= 2 && !stem.ends_with('s') {
-            tags.push(Tag::Verb(Form::ThirdSingular));
+            // The plural noun comes first because it is far commoner than the third person
+            // singular verb, and the two are spelled alike in every regular word.
             tags.push(Tag::Noun(Number::Plural));
+            tags.push(Tag::Verb(Form::ThirdSingular));
         }
     }
     if capitalised {
@@ -636,7 +877,10 @@ mod tests {
         let Reported::Known(these) = tags("these") else {
             panic!("these is listed")
         };
-        assert_eq!(these, [Tag::Determiner(Number::Plural)]);
+        // these is also a pronoun, as in "these are current", so the determiner reading is
+        // asked to lead the list rather than to be alone in it.
+        assert_eq!(these.first(), Some(&Tag::Determiner(Number::Plural)));
+        assert!(!these.contains(&Tag::Determiner(Number::Singular)));
     }
 
     #[test]

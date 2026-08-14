@@ -53,8 +53,8 @@ fn a_lyric_drops_repetition() {
 #[test]
 fn nothing_the_engine_infers_excuses_a_real_fault() {
     let spoiled = [
-        (TECHNICAL, "The parser read the file."),
-        (STORY, "The old man walk to the door."),
+        (TECHNICAL, "The parsers reads the file."),
+        (STORY, "The old men walks to the door."),
         (MESSAGE, "the trains dont moves"),
         (HAIKU, "the frogs jumps in"),
         (LYRIC, "i wants it i wants it"),

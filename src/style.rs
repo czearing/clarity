@@ -145,6 +145,12 @@ const FILLERS: &[&str] = &[
     "simply",
 ];
 
+/// Whether a word is a qualifier that changes nothing wherever it appears.
+#[must_use]
+pub fn is_empty(word: &str) -> bool {
+    FILLERS.contains(&word)
+}
+
 /// What is wrong with the wording of `sentence`.
 ///
 /// A listed phrase claims its words, so nothing inside one is reported twice.

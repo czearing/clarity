@@ -13,6 +13,8 @@ pub struct Token {
     pub at: Span,
     /// Whether the first letter was capitalised as written.
     pub capitalised: bool,
+    /// Whether this token is a term being named rather than a word being used.
+    pub mention: bool,
 }
 
 impl Token {
@@ -31,7 +33,20 @@ impl Token {
 pub fn tokenise(text: &str) -> Vec<Token> {
     let mut tokens = Vec::new();
     let mut start = None;
+    let spans = addresses(text);
+    let mut skip_to = 0;
     for (at, character) in text.char_indices() {
+        if at < skip_to {
+            continue;
+        }
+        if let Some(span) = spans.iter().find(|span| span.start == at) {
+            if let Some(from) = start.take() {
+                push(&mut tokens, text, from, at);
+            }
+            push_address(&mut tokens, text, span.start, span.end);
+            skip_to = span.end;
+            continue;
+        }
         let part_of_word = character.is_alphanumeric() || character == '\'' || character == '-';
         match (part_of_word, start) {
             (true, None) => start = Some(at),
@@ -48,7 +63,98 @@ pub fn tokenise(text: &str) -> Vec<Token> {
     if let Some(from) = start {
         push(&mut tokens, text, from, text.len());
     }
-    tokens
+    fold_mentions(tokens)
+}
+
+/// Where the addresses are in `text`.
+///
+/// A web address or a file path is one name, not a sentence. Split on its punctuation it becomes a
+/// string of unknown words joined by marks, and every rule about what may follow a mark then fires
+/// inside something that was never prose. It is found by its scheme or by its separators rather
+/// than by a list of hosts or extensions, so an address the author invented reads like any other.
+fn addresses(text: &str) -> Vec<Span> {
+    let mut found = Vec::new();
+    let bytes = text.as_bytes();
+    let mut at = 0;
+    while at < text.len() {
+        if !text.is_char_boundary(at) {
+            at += 1;
+            continue;
+        }
+        let rest = &text[at..];
+        let starts = at == 0 || bytes[at - 1].is_ascii_whitespace() || bytes[at - 1] == b'(';
+        let addressed = rest.starts_with("http://")
+            || rest.starts_with("https://")
+            || rest.starts_with("www.")
+            || rest.starts_with("./")
+            || rest.starts_with("../");
+        if starts && addressed {
+            let end = rest
+                .find(|character: char| character.is_whitespace() || character == ')')
+                .map_or(text.len(), |offset| at + offset);
+            let end = text[..end].trim_end_matches(['.', ',', ';', ':']).len();
+            found.push(Span::new(at, end));
+            at = end;
+            continue;
+        }
+        at += 1;
+    }
+    found
+}
+
+/// Push a whole address as one name.
+fn push_address(tokens: &mut Vec<Token>, text: &str, from: usize, to: usize) {
+    let word = text[from..to].to_owned();
+    tokens.push(Token {
+        key: word.to_lowercase(),
+        word,
+        at: Span::new(from, to),
+        capitalised: true,
+        mention: true,
+    });
+}
+
+/// Marks that open and close a term being named rather than used.
+const QUOTES: &[&str] = &["\"", "`", "\u{201c}", "\u{201d}"];
+
+/// Fold each quoted or backticked run into one token standing for the term it names.
+///
+/// A named term is a noun whatever it contains. Without this, "a determiner and its noun must
+/// share number, as in \"a dog\" but not \"a dogs\"" is read as though the writer had written
+/// "a dogs", and the sentence is blamed for the mistake it is describing.
+fn fold_mentions(tokens: Vec<Token>) -> Vec<Token> {
+    let opener = |token: &Token| QUOTES.contains(&token.word.as_str());
+    let mut folded: Vec<Token> = Vec::with_capacity(tokens.len());
+    let mut inside: Option<usize> = None;
+    for token in tokens {
+        match inside {
+            Some(from) if opener(&token) => {
+                let end = token.at.end;
+                let held: Vec<Token> = folded.drain(from..).collect();
+                let word: String = held
+                    .iter()
+                    .map(|held| held.word.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let at = Span::new(held.first().map_or(end, |first| first.at.start), end);
+                folded.push(Token {
+                    key: word.to_lowercase(),
+                    word,
+                    at,
+                    // A quoted or backticked name is spelled the way the thing is spelled. An
+                    // identifier that begins a sentence in lower case has not failed to open with
+                    // a capital: it has no capital to open with, and demanding one would ask the
+                    // writer to misname the thing they are naming.
+                    capitalised: true,
+                    mention: true,
+                });
+                inside = None;
+            }
+            None if opener(&token) => inside = Some(folded.len()),
+            Some(_) | None => folded.push(token),
+        }
+    }
+    folded
 }
 
 /// Endings that are words of their own, each with the spelling left when the apostrophe is dropped.
@@ -85,6 +191,7 @@ fn one(tokens: &mut Vec<Token>, text: &str, from: usize, to: usize) {
         key: word.to_lowercase(),
         at: Span::new(from, to),
         capitalised: word.chars().next().is_some_and(char::is_uppercase),
+        mention: false,
     });
 }
 
@@ -101,6 +208,7 @@ pub fn retype(token: &Token, word: &str) -> Token {
         word,
         at: token.at,
         capitalised: token.capitalised,
+        mention: token.mention,
     }
 }
 
@@ -139,12 +247,26 @@ pub fn fused(tokens: &[Token]) -> impl Iterator<Item = usize> + '_ {
 }
 
 /// The two words a fused one holds, if it holds two.
+/// Whether a clitic can attach to a stem, which decides whether a missing apostrophe is inferred.
+///
+/// "n't" attaches to an auxiliary and nothing else. The rest attach to a pronoun and nothing else.
+/// Without this, "call" reads as "ca" and "'ll", and "form" as "for" and "'m".
+fn attaches(stem: &str, clitic: &str) -> bool {
+    if clitic == "n't" {
+        return crate::lexicon::is_auxiliary(stem);
+    }
+    crate::lexicon::is_pronoun(stem)
+}
+
 fn split(token: &Token) -> Option<(Token, Token)> {
     if crate::lexicon::places(&token.key) {
         return None;
     }
     CLITICS.iter().find_map(|(clitic, bare)| {
         let stem = token.key.strip_suffix(bare)?;
+        if !attaches(stem, clitic) {
+            return None;
+        }
         let at = stem.len();
         (!stem.is_empty() && crate::lexicon::places(stem) && crate::lexicon::places(clitic)).then(
             || {
@@ -155,12 +277,14 @@ fn split(token: &Token) -> Option<(Token, Token)> {
                         key: stem.to_string(),
                         at: Span::new(token.at.start, cut),
                         capitalised: token.capitalised,
+                        mention: false,
                     },
                     Token {
                         word: (*clitic).to_string(),
                         key: (*clitic).to_string(),
                         at: Span::new(cut, token.at.end),
                         capitalised: false,
+                        mention: false,
                     },
                 )
             },

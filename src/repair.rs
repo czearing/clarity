@@ -191,7 +191,7 @@ mod tests {
     #[test]
     fn a_determiner_is_brought_into_agreement() {
         assert_eq!(fixed("a dogs run"), "the dogs run");
-        assert_eq!(fixed("these dog runs"), "this dog runs");
+        assert_eq!(fixed("every dogs run"), "all dogs run");
     }
 
     #[test]

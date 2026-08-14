@@ -27,6 +27,7 @@
 pub mod assess;
 pub mod check;
 pub mod clarity;
+pub mod condense;
 pub mod grammar;
 pub mod lexicon;
 pub mod register;

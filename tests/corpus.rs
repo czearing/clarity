@@ -104,10 +104,7 @@ const BAD: &[(&str, &str)] = &[
         "the children walks",
         "a tensed verb must agree with its subject",
     ),
-    (
-        "the child walk",
-        "a tensed verb must agree with its subject",
-    ),
+    ("the child walk", "a sentence needs a tensed verb"),
     (
         "the men was here",
         "a tensed verb must agree with its subject",

@@ -73,13 +73,15 @@ pub fn why(from: Tag, to: Tag) -> Option<Rule> {
         (Tag::Determiner(had), Tag::Noun(wants) | Tag::Proper(wants)) if had != wants => {
             Some(Rule::DeterminerNumber)
         }
-        (Tag::Determiner(_), Tag::Verb(form)) if form != Form::Gerund => {
+        (Tag::Determiner(_), Tag::Verb(form)) if !modifies_a_noun(form) => {
             Some(Rule::DeterminerTarget)
         }
         (Tag::Determiner(_), Tag::Modal | Tag::Preposition | Tag::Mark | Tag::To) => {
             Some(Rule::DeterminerTarget)
         }
-        (Tag::Modal, next) if !leads_to_verb(next) => Some(Rule::ModalTakesBase),
+        (Tag::Modal, next) if !leads_to_verb(next) && !ends_a_clause(next) => {
+            Some(Rule::ModalTakesBase)
+        }
         (Tag::To, next) if !leads_to_verb(next) => Some(Rule::ToTakesBase),
         (Tag::Preposition, Tag::Modal) => Some(Rule::PrepositionTarget),
         (Tag::Preposition, Tag::Verb(form)) if form != Form::Gerund => {
@@ -90,20 +92,39 @@ pub fn why(from: Tag, to: Tag) -> Option<Rule> {
         {
             Some(Rule::SubjectVerb)
         }
+        (Tag::Verb(before), Tag::Verb(after))
+            if is_tensed(before)
+                && matches!(
+                    after,
+                    Form::ThirdSingular | Form::PastSingular | Form::PastPlural
+                ) =>
+        {
+            Some(Rule::DoubledTense)
+        }
         (Tag::Pronoun(..), Tag::Noun(_) | Tag::Proper(_)) => Some(Rule::PronounIsWhole),
         (Tag::Noun(Number::Plural), Tag::Noun(_) | Tag::Proper(_)) => {
             Some(Rule::AttributiveSingular)
         }
-        (Tag::Verb(before), Tag::Verb(after)) if is_tensed(before) && is_tensed(after) => {
-            Some(Rule::DoubledTense)
-        }
         (before, Tag::Verb(Form::Participle))
-            if !matches!(before, Tag::Verb(_) | Tag::Modal | Tag::Adverb) =>
+            if !matches!(
+                before,
+                Tag::Verb(_) | Tag::Modal | Tag::Adverb | Tag::Determiner(_) | Tag::Adjective
+            ) =>
         {
             Some(Rule::StrandedParticiple)
         }
         _ => None,
     }
+}
+
+/// Whether a verb form can stand between a determiner and the noun, as in "a tensed verb".
+fn modifies_a_noun(form: Form) -> bool {
+    matches!(form, Form::Gerund | Form::Participle | Form::Past)
+}
+
+/// Whether a tag can close a clause whose verb was left out, as in "if any word can".
+fn ends_a_clause(tag: Tag) -> bool {
+    matches!(tag, Tag::Mark | Tag::Coordinator | Tag::Subordinator)
 }
 
 /// Whether a tag can stand between a modal or infinitival "to" and the plain verb it governs.
@@ -143,7 +164,7 @@ fn agrees(subject: Tag, form: Form) -> bool {
 
 /// What a broken rule costs. Far above any sum of frictions a sentence can accumulate, so a
 /// reading breaks a rule only when every reading does.
-const BREACH: f64 = 1000.0;
+pub const BREACH: f64 = 1000.0;
 
 /// What a local disagreement costs while reading. Only a pull, not a breach, because the noun
 /// beside a verb is often not its subject, as in "the key to the cabinets is missing". Agreement
@@ -184,30 +205,54 @@ pub fn clauses(tags: &[Tag]) -> Vec<(usize, usize)> {
     let mut found = Vec::new();
     let mut head: Option<usize> = None;
     let mut modifying = false;
+    // Set once the clause has its verb. A noun after that is an object, and a plain verb after
+    // that is a complement, as "go" is in "this lets the matter go". Neither starts a clause, and
+    // treating them as though they did invents disagreements the writer never wrote.
+    let mut settled = false;
     for (index, &tag) in tags.iter().enumerate() {
         match tag {
-            Tag::Preposition | Tag::Subordinator => modifying = head.is_some(),
-            Tag::Verb(form) if is_tensed(form) => {
+            Tag::Preposition | Tag::Subordinator => {
+                modifying = head.is_some();
+                settled = false;
+            }
+            Tag::Verb(form) if is_tensed(form) && !settled => {
                 if let Some(at) = head.take() {
                     found.push((at, index));
+                    settled = true;
                 }
                 modifying = false;
             }
-            Tag::Modal => {
+            Tag::Modal if !settled => {
                 if let Some(at) = head.take() {
                     found.push((at, index));
+                    settled = true;
                 }
                 modifying = false;
             }
             Tag::Mark | Tag::Coordinator => {
                 head = None;
                 modifying = false;
+                settled = false;
             }
-            _ if tag.is_nominal() && !modifying => head = Some(index),
+            _ if tag.is_nominal() && !modifying && !settled => head = Some(index),
             _ => {}
         }
     }
     found
+}
+
+/// Whether a reading opens with a plain verb, which makes it a command.
+///
+/// A command has no subject on the page: "check the file" is a sentence, and asking it for one
+/// would be asking for a word English leaves out on purpose.
+#[must_use]
+pub fn is_imperative(tags: &[Tag]) -> bool {
+    let mut rest = tags.iter();
+    let mut first = rest.next();
+    while first == Some(&Tag::Adverb) {
+        first = rest.next();
+    }
+    first == Some(&Tag::Verb(Form::Base)) && tags.len() > 1
 }
 
 /// A tokenised sentence.
@@ -224,6 +269,25 @@ impl Sentence {
         Self {
             tokens: crate::token::tokenise(text),
         }
+    }
+
+    /// Write the sentence back out.
+    ///
+    /// Words are joined by a single space, except before a mark or an ending that is a word of its
+    /// own, so a repaired sentence reads as one.
+    #[must_use]
+    pub fn text(&self) -> String {
+        let mut text = String::new();
+        for token in &self.tokens {
+            let joined = token.key.starts_with('\'')
+                || token.key == "n't"
+                || matches!(token.key.as_str(), "." | "," | "!" | "?" | ";" | ":");
+            if !text.is_empty() && !joined {
+                text.push(' ');
+            }
+            text.push_str(&token.word);
+        }
+        text
     }
 }
 
@@ -262,6 +326,8 @@ pub struct Reading {
 pub struct Grammar {
     /// A position that must be read as a tensed verb, used to insist on a predicate.
     pub predicate_at: Option<usize>,
+    /// Whether the first word must be read as a plain verb, used to test for a command.
+    pub command: bool,
 }
 
 impl Model for Grammar {
@@ -302,6 +368,19 @@ impl Fit for Grammar {
                     token
                 };
                 let mut allowed = ask(&Lexicon, token).unwrap_or(Reported::Unreported);
+                if token.mention {
+                    allowed = Reported::Known(vec![Tag::Proper(Number::Singular)]);
+                }
+                // A command reading is offered only where the lexicon already allows a plain
+                // verb. Forcing one on a word that cannot be one would read "one broken rule" as
+                // an instruction to one something.
+                if self.command && index == 0 {
+                    if let Reported::Known(tags) = &allowed {
+                        if tags.contains(&Tag::Verb(Form::Base)) {
+                            allowed = Reported::Known(vec![Tag::Verb(Form::Base)]);
+                        }
+                    }
+                }
                 if token.key == "to" && index > 0 && takes_infinitive(&reference.tokens[index - 1])
                 {
                     allowed = Reported::Known(vec![Tag::To]);
