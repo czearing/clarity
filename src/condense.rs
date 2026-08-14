@@ -262,7 +262,7 @@ fn trim(unit: &Sentence, tags: &[Tag], about: &[(String, f64)], carries: u16) ->
     let mut start = 0;
 
     for at in 0..unit.tokens.len().saturating_sub(1) {
-        if !matches!(tags.get(at), Some(Tag::Mark)) || unit.tokens[at].ends_sentence() {
+        if !matches!(tags.get(at), Some(Tag::Mark(_))) || unit.tokens[at].ends_sentence() {
             continue;
         }
         if holds(&unit.tokens[at + 1..], about) == carries
@@ -275,7 +275,7 @@ fn trim(unit: &Sentence, tags: &[Tag], about: &[(String, f64)], carries: u16) ->
     for at in (start + 1..unit.tokens.len()).rev() {
         let breaks = matches!(
             tags.get(at),
-            Some(Tag::Mark | Tag::Subordinator | Tag::Coordinator)
+            Some(Tag::Mark(_) | Tag::Subordinator | Tag::Coordinator)
         );
         if !breaks {
             continue;
@@ -326,7 +326,7 @@ fn stands_alone(tokens: &[Token], tags: &[Tag], moved: bool) -> bool {
     if moved
         && matches!(
             tags.first(),
-            Some(Tag::Subordinator | Tag::Coordinator | Tag::Preposition | Tag::To | Tag::Mark)
+            Some(Tag::Subordinator | Tag::Coordinator | Tag::Preposition | Tag::To | Tag::Mark(_))
         )
     {
         return false;

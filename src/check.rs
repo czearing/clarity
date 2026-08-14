@@ -157,7 +157,7 @@ pub fn judge(reading: &Reading, register: Register) -> Report {
         && reading
             .states
             .last()
-            .is_some_and(|state| !state.frame.tensed && !state.frame.open())
+            .is_some_and(|state| !state.frame.tensed && !state.frame.ever && !state.frame.open())
     {
         faults.push(Fault {
             at: Span::new(0, tags.len()),

@@ -80,7 +80,7 @@ pub fn why(from: Tag, to: Tag) -> Option<Rule> {
         (Tag::Determiner(_), Tag::Verb(form)) if !modifies_a_noun(form) => {
             Some(Rule::DeterminerTarget)
         }
-        (Tag::Determiner(_), Tag::Modal | Tag::Preposition | Tag::Mark | Tag::To) => {
+        (Tag::Determiner(_), Tag::Modal | Tag::Preposition | Tag::Mark(_) | Tag::To) => {
             Some(Rule::DeterminerTarget)
         }
         (Tag::Preposition, Tag::Modal) => Some(Rule::PrepositionTarget),
@@ -116,7 +116,7 @@ fn modifies_a_noun(form: Form) -> bool {
 
 /// Whether a tag can close a clause whose verb was left out, as in "if any word can".
 fn ends_a_clause(tag: Tag) -> bool {
-    matches!(tag, Tag::Mark | Tag::Coordinator | Tag::Subordinator)
+    matches!(tag, Tag::Mark(_) | Tag::Coordinator | Tag::Subordinator)
 }
 
 /// Whether a tag can stand between a modal or infinitival "to" and the plain verb it governs.
@@ -216,7 +216,7 @@ pub fn clauses(tags: &[Tag]) -> Vec<(usize, usize)> {
                 }
                 modifying = false;
             }
-            Tag::Mark | Tag::Coordinator => {
+            Tag::Mark(_) | Tag::Coordinator => {
                 head = None;
                 modifying = false;
                 settled = false;

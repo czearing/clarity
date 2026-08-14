@@ -23,7 +23,7 @@
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
-use crate::tag::{Form, Number, Person, Tag};
+use crate::tag::{Break, Form, Number, Person, Tag};
 
 /// What the clause knows about its subject.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -70,6 +70,12 @@ pub struct Frame {
     pub tensed: bool,
     /// The clause this one interrupted, waiting to be resumed.
     pub outer: Option<(Subject, bool)>,
+    /// Whether any clause of this sentence has taken a tensed verb.
+    ///
+    /// A full stop ends the clause it closes, so the frame it leaves has no subject and no tense.
+    /// Asking that frame whether the sentence had a predicate would answer no for every sentence,
+    /// which is why the answer is kept rather than read off the end.
+    pub ever: bool,
     /// What a word has demanded and not yet received.
     ///
     /// A grammar written as a list of forbidden pairs has a hole wherever a pair was not listed,
@@ -87,6 +93,7 @@ impl Frame {
             subject: Subject::Empty,
             tensed: false,
             outer: None,
+            ever: false,
             wants: Wants::Nothing,
         }
     }
@@ -144,7 +151,17 @@ impl Frame {
             // A mark closes whatever clause was open and hands the sentence back what it was
             // holding. A full stop at the end of a sentence with nothing open changes nothing,
             // which is what lets the last word of a sentence still be asked for its verb.
-            Tag::Mark => match self.outer {
+            // A full stop, a semicolon, or a question mark ends every clause it closes, so what
+            // follows starts with nothing. A comma only pauses, and hands back a clause the
+            // sentence had set aside.
+            Tag::Mark(Break::Stop) => Self {
+                subject: Subject::Empty,
+                tensed: false,
+                outer: None,
+                ever: self.ever || self.tensed,
+                ..carried
+            },
+            Tag::Mark(Break::Pause) => match self.outer {
                 Some((subject, tensed)) => Self {
                     subject,
                     tensed,
@@ -180,11 +197,13 @@ impl Frame {
             Tag::Verb(form) if is_tensed(form) && !self.tensed => Self {
                 subject: spent(self.subject),
                 tensed: true,
+                ever: true,
                 ..carried
             },
             Tag::Modal if !self.tensed => Self {
                 subject: spent(self.subject),
                 tensed: true,
+                ever: true,
                 ..carried
             },
             // Before the verb, the first noun phrase is the subject and everything after it is a

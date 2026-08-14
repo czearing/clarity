@@ -7,7 +7,7 @@
 use fitkit::core::{Answer, Refusal, Reported};
 use fitkit::{Citation, Law};
 
-use crate::tag::{Case, Form, Number, Person, Tag};
+use crate::tag::{Break, Case, Form, Number, Person, Tag};
 use crate::token::Token;
 
 /// Determiners, with the number each one permits.
@@ -667,7 +667,7 @@ pub fn is_closed(key: &str) -> bool {
                     | Tag::Subordinator
                     | Tag::Modal
                     | Tag::To
-                    | Tag::Mark
+                    | Tag::Mark(_)
             ) || is_auxiliary(key)
         })
 }
@@ -744,7 +744,12 @@ fn listed(key: &str) -> Option<Vec<Tag>> {
         return Some(vec![Tag::Numeral]);
     }
     if key.chars().all(|c| !c.is_alphanumeric()) {
-        return Some(vec![Tag::Mark]);
+        let ends = key.contains(['.', '!', '?', ';']);
+        return Some(vec![Tag::Mark(if ends {
+            Break::Stop
+        } else {
+            Break::Pause
+        })]);
     }
     for (word, numbers) in DETERMINERS {
         if *word == key {

@@ -79,8 +79,21 @@ pub enum Tag {
     To,
     /// Number word.
     Numeral,
-    /// Any mark.
-    Mark,
+    /// A mark, and whether it pauses a clause or ends one.
+    Mark(Break),
+}
+
+/// What a mark does to the clause around it.
+///
+/// A comma separates parts of one clause and a full stop ends it. Treating both alike leaks a
+/// subject from one sentence into the next, so the two are distinguished here rather than by any
+/// rule that consults them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Break {
+    /// A pause inside a clause, such as a comma.
+    Pause,
+    /// The end of a clause, such as a full stop, a semicolon, or a question mark.
+    Stop,
 }
 
 impl Tag {
@@ -100,7 +113,8 @@ impl Tag {
             Self::Subordinator,
             Self::To,
             Self::Numeral,
-            Self::Mark,
+            Self::Mark(Break::Pause),
+            Self::Mark(Break::Stop),
         ];
         for number in [Number::Singular, Number::Plural] {
             tags.push(Self::Determiner(number));
