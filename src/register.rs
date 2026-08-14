@@ -13,8 +13,7 @@
 use fitkit::core::{Evidence, Span};
 use fitkit::fit::{recover, Fit, Model, Segmented};
 
-use crate::check::{check_in, Report};
-use crate::grammar::Sentence;
+use crate::check::{check_in, judge, Reading, Report};
 use crate::text::Text;
 
 /// A requirement a passage may or may not hold itself to.
@@ -158,19 +157,23 @@ impl Model for Voice {
 }
 
 impl Fit for Voice {
-    type Evidence = Sentence;
+    // The reading, not the sentence. A register decides which faults are held against a passage,
+    // never what its words are, so reading a unit once and judging that reading under each
+    // register gives the same answer as reading it under each register, for a thirty second of
+    // the work.
+    type Evidence = Reading;
 
-    fn evidence(&self, reference: &Text) -> Vec<Evidence<Sentence>> {
+    fn evidence(&self, reference: &Text) -> Vec<Evidence<Reading>> {
         reference
             .units
             .iter()
             .enumerate()
-            .map(|(index, unit)| Evidence::certain(Span::new(index, index + 1), unit.clone()))
+            .map(|(index, unit)| Evidence::certain(Span::new(index, index + 1), Reading::of(unit)))
             .collect()
     }
 
-    fn emission(&self, evidence: &Sentence, params: &Register) -> f64 {
-        let report = check_in(evidence, *params);
+    fn emission(&self, evidence: &Reading, params: &Register) -> f64 {
+        let report = judge(evidence, *params);
         let unexplained = report.faults.len() + report.unknown.len() + report.notes.len();
         FAULT * f64::from(u32::try_from(unexplained).unwrap_or(u32::MAX)) + params.price()
     }

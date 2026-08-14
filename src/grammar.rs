@@ -8,6 +8,7 @@ use fitkit::ask;
 use fitkit::core::{Confidence, Evidence, Reported, Span};
 use fitkit::fit::{Fit, Model, Segmented};
 
+use crate::frame::{Frame, Subject, Wants};
 use crate::lexicon::Lexicon;
 use crate::tag::{Form, Number, Person, Tag};
 use crate::token::Token;
@@ -36,6 +37,8 @@ pub enum Rule {
     PronounIsWhole,
     /// A noun used to modify another noun takes the singular, as in "dog books".
     AttributiveSingular,
+    /// A tensed verb outside a command needs a subject.
+    Subjectless,
     /// A sentence needs a tensed verb.
     NoPredicate,
     /// A sentence opens with a capital and closes with a mark.
@@ -59,6 +62,7 @@ impl Rule {
             Self::StrandedParticiple => "a participle needs an auxiliary before it",
             Self::PronounIsWhole => "a pronoun cannot have a noun attached to it",
             Self::AttributiveSingular => "a noun modifying another noun takes the singular",
+            Self::Subjectless => "a tensed verb needs a subject",
             Self::NoPredicate => "a sentence needs a tensed verb",
             Self::Unmarked => "a sentence opens with a capital and closes with a mark",
             Self::Unapostrophed => "a contraction is spelled with an apostrophe",
@@ -79,10 +83,6 @@ pub fn why(from: Tag, to: Tag) -> Option<Rule> {
         (Tag::Determiner(_), Tag::Modal | Tag::Preposition | Tag::Mark | Tag::To) => {
             Some(Rule::DeterminerTarget)
         }
-        (Tag::Modal, next) if !leads_to_verb(next) && !ends_a_clause(next) => {
-            Some(Rule::ModalTakesBase)
-        }
-        (Tag::To, next) if !leads_to_verb(next) => Some(Rule::ToTakesBase),
         (Tag::Preposition, Tag::Modal) => Some(Rule::PrepositionTarget),
         (Tag::Preposition, Tag::Verb(form)) if form != Form::Gerund => {
             Some(Rule::PrepositionTarget)
@@ -165,11 +165,6 @@ fn agrees(subject: Tag, form: Form) -> bool {
 /// What a broken rule costs. Far above any sum of frictions a sentence can accumulate, so a
 /// reading breaks a rule only when every reading does.
 pub const BREACH: f64 = 1000.0;
-
-/// What a local disagreement costs while reading. Only a pull, not a breach, because the noun
-/// beside a verb is often not its subject, as in "the key to the cabinets is missing". Agreement
-/// is judged over the whole clause instead, once the subject is known.
-const PULL: f64 = 3.0;
 
 /// What each step down a word's list of readings costs. Small enough to never outweigh a rule,
 /// large enough to settle a tie in favour of the commoner reading.
@@ -315,6 +310,8 @@ pub struct Reading {
     pub allowed: Reported<Vec<Tag>>,
     /// Position in the sentence.
     pub at: usize,
+    /// Whether this is the last word, which is where a sentence is asked for its predicate.
+    pub last: bool,
 }
 
 /// The grammar of English as a fit over tag sequences.
@@ -330,19 +327,37 @@ pub struct Grammar {
     pub command: bool,
 }
 
+/// A tag together with what the clause around it has seen.
+///
+/// This is what the search actually chooses. Reading it as a tag alone was the mistake that made
+/// agreement, predicates, and doubled tense into things that had to be looked for afterwards.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct State {
+    /// What the word is.
+    pub tag: Tag,
+    /// What the clause has seen, once this word is part of it.
+    pub frame: Frame,
+}
+
 impl Model for Grammar {
     type Signal = Sentence;
-    type Params = Tag;
+    type Params = State;
 
     fn name(&self) -> &'static str {
         "english grammar"
     }
 
-    fn candidates(&self) -> Vec<Tag> {
-        Tag::every()
+    fn candidates(&self) -> Vec<State> {
+        let mut found = Vec::new();
+        for &frame in Frame::every() {
+            for tag in Tag::every() {
+                found.push(State { tag, frame });
+            }
+        }
+        found
     }
 
-    fn render(&self, input: &Sentence, _params: &Tag) -> Sentence {
+    fn render(&self, input: &Sentence, _params: &State) -> Sentence {
         input.clone()
     }
 }
@@ -390,48 +405,198 @@ impl Fit for Grammar {
                 } else {
                     Confidence::ZERO
                 };
-                let reading = Reading { allowed, at: index };
+                let reading = Reading {
+                    allowed,
+                    at: index,
+                    last: index + 1 == reference.tokens.len(),
+                };
                 Evidence::new(Span::new(index, index + 1), confidence, reading)
             })
             .collect()
     }
 
-    fn emission(&self, evidence: &Reading, params: &Tag) -> f64 {
-        if self.predicate_at == Some(evidence.at) && !params.is_finite_verb() {
+    fn emission(&self, evidence: &Reading, params: &State) -> f64 {
+        // A frame is what the clause has seen, so at the first word it can only be what one word
+        // makes of an empty clause. Every other frame there describes a history that did not happen.
+        if evidence.at == 0 && params.frame != Frame::opening().after(params.tag) {
             return f64::INFINITY;
         }
-        match &evidence.allowed {
+        // A sentence is asked for its predicate here rather than by a second reading afterwards.
+        // Charging for a missing verb inside the search is what makes the search look for one: the
+        // reading that turns a noun into a verb to supply it is now the cheaper reading, and the
+        // reading that quietly leaves the sentence verbless has to pay.
+        // Worse than any single broken rule, so that a sentence with a fault in it is still read as
+        // the sentence it was trying to be. Read "the dog run" as a subject that disagrees with its
+        // verb, not as a heap of three nouns with nothing said about them.
+        let bare = if evidence.last {
+            // A tensed verb with nothing to answer to is as broken as no verb at all, and charging
+            // for it is what stops an unknown word being pressed into service as the verb a
+            // fragment does not have.
+            let stands = params.frame.tensed && params.frame.subject != Subject::None;
+            let clause = if stands { 0.0 } else { BREACH };
+            // A sentence that ends inside a subordinate clause is answerable for both of them, so
+            // a clause opened and never given a verb cannot be a free place to hide one.
+            let held = match params.frame.outer {
+                Some((_, false)) => BREACH,
+                _ => 0.0,
+            };
+            clause + held
+        } else {
+            0.0
+        };
+        if self.predicate_at == Some(evidence.at) && !params.tag.is_finite_verb() {
+            return f64::INFINITY;
+        }
+        let ranked = match &evidence.allowed {
             Reported::Unreported => 0.0,
             Reported::Known(tags) => tags
                 .iter()
-                .position(|tag| tag == params)
+                .position(|tag| *tag == params.tag)
                 .map_or(f64::INFINITY, |rank| {
                     PREFERENCE * f64::from(u32::try_from(rank).unwrap_or(u32::MAX))
                 }),
-        }
+        };
+        ranked + bare
     }
 
-    fn transition(&self, from: &Tag, to: &Tag) -> f64 {
-        match why(*from, *to) {
-            Some(Rule::SubjectVerb) => PULL,
-            Some(_) => BREACH,
-            None => friction(*from, *to),
+    fn transition(&self, from: &State, to: &State) -> f64 {
+        // The frame after a word is decided by the frame before it and what the word was read as.
+        // Any other pairing is not a costly reading of the sentence, it is not a reading at all.
+        if to.frame != from.frame.after(to.tag) {
+            return f64::INFINITY;
         }
+        // Agreement is now local, because the subject is carried rather than searched for. This is
+        // what makes "the key to the cabinets is missing" agree with "key" without any rule about
+        // stepping over modifiers, and what makes a second tensed verb in a settled clause cost
+        // something at the moment it is chosen.
+        let structural = match why(from.tag, to.tag) {
+            // Agreement is priced by the frame now, which sees the actual subject rather than
+            // whatever happened to be the word before.
+            Some(Rule::SubjectVerb) => 0.0,
+            Some(_) => BREACH,
+            None => friction(from.tag, to.tag),
+        };
+        structural
+            + if disagrees(from.frame, to.tag) {
+                BREACH
+            } else {
+                0.0
+            }
+            + if doubles(from.frame, to.tag) {
+                BREACH
+            } else {
+                0.0
+            }
+            + if subjectless(from.frame, to.tag) {
+                BREACH
+            } else {
+                0.0
+            }
+            + if unmet(from.frame, to.tag).is_some() {
+                BREACH
+            } else {
+                0.0
+            }
     }
+
+    fn into(&self, to: &State) -> Option<Vec<u32>> {
+        let tags = Tag::every().len();
+        let mut found = Vec::new();
+        for (index, frame) in Frame::every().iter().enumerate() {
+            if frame.after(to.tag) == to.frame {
+                let base = index * tags;
+                found.extend((0..tags).map(|offset| u32::try_from(base + offset).unwrap_or(0)));
+            }
+        }
+        Some(found)
+    }
+}
+
+/// Whether a tensed verb fails to agree with the subject its clause is carrying.
+///
+/// The frame has already done the hard part. Because the subject travels with the clause rather
+/// than being searched for backwards, this holds equally for `the dog runs` and for `the key to the
+/// cabinets is missing`, and there is no rule about stepping over the words in between.
+#[must_use]
+pub fn disagrees(frame: Frame, tag: Tag) -> bool {
+    matches!(
+        (frame.subject, tag),
+        (Subject::Third, Tag::Verb(Form::Base | Form::PastPlural))
+            | (
+                Subject::First,
+                Tag::Verb(Form::ThirdSingular | Form::PastPlural)
+            )
+            | (
+                Subject::Other,
+                Tag::Verb(Form::ThirdSingular | Form::PastSingular)
+            )
+    )
+}
+
+/// Whether a demand for a plain verb is being walked past rather than answered.
+///
+/// This is the whole of `ModalTakesBase` and `ToTakesBase`, stated once from the side of the word
+/// that needs something. Reading "moves" as a noun in "the trains do not moves" no longer escapes:
+/// "do not" is still owed a verb, and a noun does not pay it.
+#[must_use]
+pub fn unmet(frame: Frame, tag: Tag) -> Option<Rule> {
+    let rule = match frame.wants {
+        Wants::Nothing => return None,
+        Wants::BaseForModal => Rule::ModalTakesBase,
+        Wants::BaseForTo => Rule::ToTakesBase,
+    };
+    if leads_to_verb(tag) || ends_a_clause(tag) {
+        return None;
+    }
+    Some(rule)
+}
+
+/// Whether a tensed verb is being taken with nothing to be the subject of.
+///
+/// Charged where it happens rather than at the end of the sentence, because a verb the sentence
+/// never had a subject for is often buried in the middle: reading "keys" as a verb in "the keys to
+/// the cabinet is missing" is what let that sentence dodge agreement entirely.
+#[must_use]
+pub fn subjectless(frame: Frame, tag: Tag) -> bool {
+    frame.subject == Subject::None
+        && !frame.tensed
+        && matches!(
+            tag,
+            Tag::Modal
+                | Tag::Verb(
+                    Form::Base
+                        | Form::ThirdSingular
+                        | Form::Past
+                        | Form::PastSingular
+                        | Form::PastPlural
+                )
+        )
+}
+
+/// Whether a second tensed verb is being added to a clause that already has one.
+#[must_use]
+pub fn doubles(frame: Frame, tag: Tag) -> bool {
+    frame.tensed
+        && frame.subject == Subject::Empty
+        && !frame.open()
+        && matches!(
+            tag,
+            Tag::Verb(Form::ThirdSingular | Form::Past | Form::PastSingular | Form::PastPlural)
+        )
 }
 
 #[cfg(test)]
 mod tests {
     use fitkit::fit::recover;
 
-    use super::{why, Grammar, Rule, Sentence};
+    use super::{unmet, why, Frame, Grammar, Rule, Sentence};
     use crate::tag::{Form, Number, Tag};
 
     fn tags(text: &str) -> Vec<Tag> {
         recover(&Grammar::default(), &Sentence::read(text))
             .controls
             .iter()
-            .map(|c| c.params)
+            .map(|c| c.params.tag)
             .collect()
     }
 
@@ -453,10 +618,29 @@ mod tests {
 
     #[test]
     fn a_modal_refuses_an_inflected_verb() {
+        let after_modal = Frame::opening().after(Tag::Modal);
         assert_eq!(
-            why(Tag::Modal, Tag::Verb(Form::ThirdSingular)),
+            unmet(after_modal, Tag::Verb(Form::ThirdSingular)),
             Some(Rule::ModalTakesBase)
         );
-        assert_eq!(why(Tag::Modal, Tag::Verb(Form::Base)), None);
+        assert_eq!(unmet(after_modal, Tag::Verb(Form::Base)), None);
+    }
+
+    #[test]
+    fn a_demand_survives_an_adverb_and_names_who_made_it() {
+        let waiting = Frame::opening().after(Tag::To).after(Tag::Adverb);
+        assert_eq!(
+            unmet(waiting, Tag::Noun(Number::Singular)),
+            Some(Rule::ToTakesBase)
+        );
+        assert_eq!(unmet(waiting, Tag::Verb(Form::Base)), None);
+    }
+
+    #[test]
+    fn a_demand_that_is_answered_is_no_longer_owed() {
+        let answered = Frame::opening()
+            .after(Tag::Modal)
+            .after(Tag::Verb(Form::Base));
+        assert_eq!(unmet(answered, Tag::Noun(Number::Singular)), None);
     }
 }

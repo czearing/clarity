@@ -85,6 +85,10 @@ const PRONOUNS: &[(&str, Person, Number, Case)] = &[
     ("everything", Person::Third, Number::Singular, Case::Either),
     ("anybody", Person::Third, Number::Singular, Case::Either),
     ("none", Person::Third, Number::Singular, Case::Either),
+    // Existential "there" is the subject of "there is a dog", and it takes its number from what
+    // follows rather than from itself, so both readings are offered and the sentence picks one.
+    ("there", Person::Third, Number::Singular, Case::Subject),
+    ("there", Person::Third, Number::Plural, Case::Subject),
     ("this", Person::Third, Number::Singular, Case::Either),
     ("that", Person::Third, Number::Singular, Case::Either),
     ("these", Person::Third, Number::Plural, Case::Either),
@@ -347,9 +351,14 @@ const INVARIANT_NOUNS: &[&str] = &[
 /// Modals, exhaustive. "ought" is absent because it takes a to-infinitive, which no modal does,
 /// so it is listed among the verbs instead. "wo", "ca", and "sha" are what splitting "won't",
 /// "can't", and "shan't" leaves behind.
+/// Modals, and with them the forms of "do".
+///
+/// "Do" is listed as a reading rather than as a fact: "I do the work" is a main verb and "I do not
+/// work" is an auxiliary, and only the sentence can say which. Giving it both readings lets the
+/// search decide, and the pull of negation towards an auxiliary is what usually decides it.
 const MODALS: &[&str] = &[
     "cannot", "can", "could", "may", "might", "shall", "should", "will", "would", "must", "'ll",
-    "wo", "ca", "sha",
+    "wo", "ca", "sha", "do", "does", "did",
 ];
 
 /// Prepositions, the common core.

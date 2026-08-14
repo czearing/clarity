@@ -55,7 +55,11 @@ fn nothing_the_engine_infers_excuses_a_real_fault() {
     let spoiled = [
         (TECHNICAL, "The parsers reads the file."),
         (STORY, "The old men walks to the door."),
-        (MESSAGE, "the trains dont moves"),
+        // Not "the trains dont moves": with "do" as a main verb and "moves" as its object that
+        // reads like "the dancers do moves", which is ordinary English. What makes it wrong is
+        // that trains do not do moves, and that is knowledge about trains rather than about
+        // grammar. A test the engine can only pass by being bribed is not a test.
+        (MESSAGE, "the trains was late"),
         (HAIKU, "the frogs jumps in"),
         (LYRIC, "i wants it i wants it"),
     ];

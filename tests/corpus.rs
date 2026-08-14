@@ -104,7 +104,12 @@ const BAD: &[(&str, &str)] = &[
         "the children walks",
         "a tensed verb must agree with its subject",
     ),
-    ("the child walk", "a sentence needs a tensed verb"),
+    // The same shape as "the dog run" above, and named the same way. A singular subject with a
+    // plain verb is a disagreement, not a missing verb: the verb is right there.
+    (
+        "the child walk",
+        "a tensed verb must agree with its subject",
+    ),
     (
         "the men was here",
         "a tensed verb must agree with its subject",
