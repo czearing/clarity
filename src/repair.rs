@@ -3,8 +3,9 @@
 //! Only words at a fault are touched, and only by swapping one inflected form for another of the
 //! same word. Nothing is added, removed, or reworded, so a repair never changes what was meant.
 
-use crate::check::{check, Report};
+use crate::check::{check_in, Report};
 use crate::grammar::Sentence;
+use crate::register::{Convention, Register};
 
 /// A word replaced by another form of itself.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -22,12 +23,27 @@ pub struct Edit {
 /// a rewrite is not a sentence needing a repair.
 #[must_use]
 pub fn repair(sentence: &Sentence) -> Option<Vec<Edit>> {
-    let report = check(sentence);
+    repair_in(sentence, Register::STRICT)
+}
+
+/// The fewest edits that leave nothing `register` holds against the sentence.
+///
+/// Repairing under a register rather than under the strictest reading is what stops a summary line
+/// being conjugated. "One pass of the trellis." is a heading, and a repair asked to find it a verb
+/// answers "Ones", which is not a correction of anything. A unit is only worth repairing once it
+/// has been read as the kind of thing it is.
+#[must_use]
+pub fn repair_in(sentence: &Sentence, register: Register) -> Option<Vec<Edit>> {
+    // No swap of one form for another puts a capital at the front or a full stop at the end, so
+    // holding a sentence to that convention here would only stop every repair the sentence did
+    // have. Whether it is punctuated is reported where it can be acted on.
+    let register = register.without(Convention::Marks);
+    let report = check_in(sentence, register);
     if report.faults.is_empty() || !report.unknown.is_empty() {
         return None;
     }
     let sites = sites(&report);
-    single(sentence, &sites).or_else(|| pair(sentence, &sites))
+    single(sentence, &sites, register).or_else(|| pair(sentence, &sites, register))
 }
 
 /// Positions a fault touches, latest first.
@@ -47,7 +63,7 @@ fn sites(report: &Report) -> Vec<usize> {
 }
 
 /// One swap that clears every fault.
-fn single(sentence: &Sentence, sites: &[usize]) -> Option<Vec<Edit>> {
+fn single(sentence: &Sentence, sites: &[usize], register: Register) -> Option<Vec<Edit>> {
     sites.iter().find_map(|&at| {
         forms(&sentence.tokens[at].word)
             .into_iter()
@@ -58,6 +74,7 @@ fn single(sentence: &Sentence, sites: &[usize]) -> Option<Vec<Edit>> {
                         at,
                         word: word.clone(),
                     }],
+                    register,
                 )
             })
             .map(|word| vec![Edit { at, word }])
@@ -65,7 +82,7 @@ fn single(sentence: &Sentence, sites: &[usize]) -> Option<Vec<Edit>> {
 }
 
 /// Two swaps, for a fault no single word can settle.
-fn pair(sentence: &Sentence, sites: &[usize]) -> Option<Vec<Edit>> {
+fn pair(sentence: &Sentence, sites: &[usize], register: Register) -> Option<Vec<Edit>> {
     for (index, &first) in sites.iter().enumerate() {
         for &second in &sites[index + 1..] {
             for left in forms(&sentence.tokens[first].word) {
@@ -80,7 +97,7 @@ fn pair(sentence: &Sentence, sites: &[usize]) -> Option<Vec<Edit>> {
                             word: right,
                         },
                     ];
-                    if clears(sentence, &edits) {
+                    if clears(sentence, &edits, register) {
                         return Some(edits);
                     }
                 }
@@ -91,8 +108,8 @@ fn pair(sentence: &Sentence, sites: &[usize]) -> Option<Vec<Edit>> {
 }
 
 /// Whether applying `edits` leaves a sentence with no fault and nothing unknown.
-fn clears(sentence: &Sentence, edits: &[Edit]) -> bool {
-    let report = check(&apply(sentence, edits));
+fn clears(sentence: &Sentence, edits: &[Edit], register: Register) -> bool {
+    let report = check_in(&apply(sentence, edits), register);
     report.is_clean()
 }
 
@@ -113,8 +130,17 @@ pub fn apply(sentence: &Sentence, edits: &[Edit]) -> Sentence {
 /// Regular inflection only. An irregular form the lexicon knows is reachable because the lexicon
 /// lists both members of the pair, and one that it does not know is out of reach, which the
 /// caller reports as a refusal to repair rather than a guess.
+///
+/// Every candidate is put back to the lexicon before it is offered. Inflection is a way of
+/// proposing a word, not a way of making one: applied to a full stop it proposes ".es" and applied
+/// to a numeral it proposes "2es", and a repair that writes either has done more damage than the
+/// fault it was called to mend. Asking the lexicon is also what keeps a real word from being
+/// invented, since "specifics" and "pers" are exactly as derivable as they are wrong here.
 fn forms(word: &str) -> Vec<String> {
     let lower = word.to_lowercase();
+    if !lower.chars().all(char::is_alphabetic) {
+        return Vec::new();
+    }
     let mut out = Vec::new();
     for (from, to) in PAIRS {
         if lower == *from {
@@ -124,20 +150,26 @@ fn forms(word: &str) -> Vec<String> {
             out.push((*from).to_string());
         }
     }
-    if let Some(stem) = lower.strip_suffix("es") {
-        out.push(stem.to_string());
+    // A closed class word has the forms it has and no others. Inflecting one derives a word that
+    // exists and means something else: "a" gives "as", "one" gives "ones", "it" gives "its", and
+    // each is a real entry in the lexicon, so asking whether the result is a word does not catch
+    // any of them. What catches them is that English does not make new determiners or pronouns.
+    if !crate::lexicon::is_closed(&lower) {
+        if let Some(stem) = lower.strip_suffix("es") {
+            out.push(stem.to_string());
+        }
+        if let Some(stem) = lower.strip_suffix('s') {
+            out.push(stem.to_string());
+        } else {
+            out.push(format!("{lower}s"));
+            out.push(format!("{lower}es"));
+        }
+        if let Some(stem) = lower.strip_suffix("ed") {
+            out.push(stem.to_string());
+            out.push(format!("{stem}s"));
+        }
     }
-    if let Some(stem) = lower.strip_suffix('s') {
-        out.push(stem.to_string());
-    } else {
-        out.push(format!("{lower}s"));
-        out.push(format!("{lower}es"));
-    }
-    if let Some(stem) = lower.strip_suffix("ed") {
-        out.push(stem.to_string());
-        out.push(format!("{stem}s"));
-    }
-    out.retain(|form| *form != lower && !form.is_empty());
+    out.retain(|form| *form != lower && !form.is_empty() && crate::lexicon::knows(form));
     out.dedup();
     out
 }

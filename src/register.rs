@@ -10,7 +10,7 @@
 //! passage is read under every register and the one that explains it for least wins, so technical
 //! prose, a message, and a poem separate themselves without any of them being described.
 
-use crate::check::{check_in, judge, Reading, Report};
+use crate::check::{judge, Report, Shapes};
 use crate::text::Text;
 
 /// A requirement a passage may or may not hold itself to.
@@ -32,6 +32,9 @@ pub enum Convention {
 }
 
 impl Convention {
+    /// Every convention, in bit order, for anything that has to reason over all of them.
+    pub const ALL_OF: [Self; 5] = Self::ALL;
+
     /// Every convention, in bit order.
     const ALL: [Self; 5] = [
         Self::Predicate,
@@ -127,9 +130,13 @@ const SPREAD: usize = 8;
 pub struct Voice;
 
 impl Voice {
-    /// What a reading costs under a register, counting all it does not excuse.
-    fn cost(reading: &Reading, register: Register) -> f64 {
-        let report = judge(reading, register);
+    /// What a unit costs under a register, counting all it does not excuse.
+    ///
+    /// The register picks which reading is weighed, because a register that lets a unit be a
+    /// phrase has to be weighed against the phrase, not against a sentence with a verb invented
+    /// to satisfy the convention the register was waiving.
+    fn cost(shapes: &Shapes, register: Register) -> f64 {
+        let report = judge(shapes.under(register), register);
         let unexplained = report.faults.len() + report.unknown.len() + report.notes.len();
         FAULT * f64::from(u32::try_from(unexplained).unwrap_or(u32::MAX))
     }
@@ -138,11 +145,11 @@ impl Voice {
     ///
     /// Waiving more than this costs without explaining, so no unit wants a larger register and the
     /// registers a passage might adopt are exactly the ones its own units ask for.
-    fn asked_for(reading: &Reading) -> Register {
-        let strict = Self::cost(reading, Register::STRICT);
+    fn asked_for(shapes: &Shapes) -> Register {
+        let strict = Self::cost(shapes, Register::STRICT);
         Convention::ALL
             .into_iter()
-            .filter(|held| Self::cost(reading, Register::STRICT.without(*held)) < strict)
+            .filter(|held| Self::cost(shapes, Register::STRICT.without(*held)) < strict)
             .fold(Register::STRICT, Register::without)
     }
 
@@ -150,10 +157,10 @@ impl Voice {
     ///
     /// A register is not free to a unit that does not need it, so each unit reaches for the
     /// smallest one that answers for it and the rest of the passage is not read loosely.
-    fn settle(reading: &Reading, adopted: &[Register]) -> (Register, f64) {
+    fn settle(shapes: &Shapes, adopted: &[Register]) -> (Register, f64) {
         adopted
             .iter()
-            .map(|register| (*register, Self::cost(reading, *register)))
+            .map(|register| (*register, Self::cost(shapes, *register)))
             .min_by(|left, right| {
                 left.1
                     .partial_cmp(&right.1)
@@ -164,7 +171,7 @@ impl Voice {
     }
 
     /// What a passage pays to adopt a set of registers and read every unit under the best of them.
-    fn spend(readings: &[Reading], adopted: &[Register]) -> f64 {
+    fn spend(readings: &[Shapes], adopted: &[Register]) -> f64 {
         let paid: f64 = adopted
             .iter()
             .map(|register| ADOPT * f64::from(register.breadth()))
@@ -177,7 +184,7 @@ impl Voice {
     }
 
     /// The registers a passage adopts, which is the cheapest set drawn from what its units ask for.
-    fn adopted(readings: &[Reading]) -> Vec<Register> {
+    fn adopted(readings: &[Shapes]) -> Vec<Register> {
         let mut asked: Vec<Register> = Vec::new();
         for reading in readings {
             let wanted = Self::asked_for(reading);
@@ -220,14 +227,14 @@ impl Voice {
 #[must_use]
 pub fn read(passage: &str) -> Vec<(Register, Report)> {
     let text = Text::read(passage);
-    let readings: Vec<Reading> = text.units.iter().map(Reading::of).collect();
+    let readings: Vec<Shapes> = text.units.iter().map(Shapes::of).collect();
     let adopted = Voice::adopted(&readings);
     text.units
         .iter()
         .zip(&readings)
-        .map(|(unit, reading)| {
-            let register = Voice::settle(reading, &adopted).0;
-            (register, check_in(unit, register))
+        .map(|(_, shapes)| {
+            let register = Voice::settle(shapes, &adopted).0;
+            (register, judge(shapes.under(register), register))
         })
         .collect()
 }

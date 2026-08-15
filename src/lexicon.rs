@@ -671,6 +671,16 @@ pub fn places(key: &str) -> bool {
     listed(key).is_some()
 }
 
+/// Whether the lexicon can place `key` at all, by listing or by inflection.
+///
+/// What is listed and what is derived are the same thing to anyone asking whether a word is a
+/// word. Only the closed classes are listed, so asking for a listing alone answers no to "walk",
+/// which is how a repair that had found the right word came to refuse to offer it.
+#[must_use]
+pub fn knows(key: &str) -> bool {
+    listed(key).is_some() || !inflected(key, false).is_empty()
+}
+
 /// Whether a word belongs to a closed class, so it frames a point rather than carrying one.
 ///
 /// Read off the readings the lexicon offers rather than from a separate list, so the two can never

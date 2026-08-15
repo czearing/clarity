@@ -94,3 +94,51 @@ That made a verbless nested reading cheaper than it was, which moved the reading
 in a handful of places and raised the crate's own count by one. A rise here means the model got
 more honest, not that the reading got worse. The bound is recorded in both directions, so no
 change like it can pass unnoticed.
+
+## A register has to reach the search, not just its output
+
+A register said which faults were held against a passage, and it said so after the passage had
+been read. Waiving the demand for a predicate therefore suppressed the missing-predicate fault and
+kept everything that fault had caused: the reading had already turned a noun into the verb the
+convention was asking for, and the invented verb disagreed with something, so a heading that was
+excused for having no verb was written up for the agreement error it did not have either.
+
+Both readings now exist before either is chosen. A unit is read once as a sentence and once as a
+phrase, and the passage decides between them by what each costs it, paying for the phrase
+convention once and only if enough of its units want it. On documentation the engine had never
+seen, this took the faults from forty to twenty-nine, and the agreement faults alone from nineteen
+to nine.
+
+What this does not do is make a phrase reading earn its keep. "The dog run fast." read as a phrase
+is a determiner, a noun, a participle and an adjective, with nothing wrong anywhere, so in a file
+whose other lines are summary phrases the disagreement goes unreported. Charging the phrase reading
+for what the sentence reading still finds was tried and measured worse: it costs eight false alarms
+on that same documentation to catch this, because the sentence reading of a genuine heading invents
+a verb and the invented verb disagrees, which is the same circularity one level up.
+
+## A gerund heading a subject was closing the phrase it opened
+
+A gerund is a head, so reading one ended the phrase it was in. That is right for "keeps listing
+them" and wrong for "listing them keeps the search exhaustive", where what follows the gerund is
+its object and belongs to the subject. The clause treated the object as a second phrase and, having
+already read a subject, took it for the subject of a clause of its own.
+
+Where the phrase already stands now decides. Inside a phrase whose head has not arrived, an -ing
+form is that phrase's head or a modifier of it; anywhere else it governs what follows, exactly as a
+preposition governs its object. The same distinction settles a participle after the noun it
+modifies, which had been leaving the head where it was and letting the next determiner open a
+clause.
+
+## A repair could invent a word, and did
+
+Repair derived other forms of a word by inflection and never asked whether the result was a word.
+Pointed at documentation it proposed ".es" for a full stop, "2es" for a numeral, and "Thes" for
+"The": eighty-eight edits across twenty-eight files, every one of them damage. Three things were
+wrong and each is now closed. A word made only of letters is the only thing inflection is offered.
+Every candidate is put back to the lexicon before it is offered. And a closed class word has the
+forms it has, because "a" gives "as" and "it" gives "its", which are real words and the wrong ones.
+Repair is also now asked under the register the passage settled on, so a summary line is no longer
+conjugated to give it the verb its register never wanted.
+
+That took eighty-eight proposals to three. All three are still wrong, as are all ten on this crate,
+so the write path is not fit to run unattended and `fix` writes nothing unless asked twice.

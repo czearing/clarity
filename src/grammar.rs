@@ -324,6 +324,15 @@ pub struct Reading {
 /// entry forbids, which is the one thing held absolute.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Grammar {
+    /// Whether a unit may be a phrase rather than a sentence.
+    ///
+    /// A register that waives the predicate convention has to waive it inside the search, not
+    /// after it. Charging a phrase for the verb it does not have makes the reading that invents
+    /// one cheaper, and the invented verb then disagrees with something, so suppressing the
+    /// missing-predicate fault afterwards leaves its consequences behind and reports those
+    /// instead. A heading, a summary line, a list item and a table cell are noun phrases by
+    /// convention, and under that convention nothing here should go looking for a verb.
+    pub phrasal: bool,
     /// A position that must be read as a tensed verb, used to insist on a predicate.
     pub predicate_at: Option<usize>,
     /// Whether the first word must be read as a plain verb, used to test for a command.
@@ -437,7 +446,20 @@ impl Fit for Grammar {
             // fragment does not have.
             let stands =
                 (params.frame.tensed || params.frame.ever) && params.frame.subject != Subject::None;
-            let clause = if stands {
+            // A unit allowed to be a phrase has to be one phrase. Waiving the predicate without
+            // asking for anything in its place lets "the dog run fast" read as a determiner and
+            // three words with no fault anywhere, which is worse than the fault it was waiving:
+            // a register meant to excuse headings would go on to excuse every disagreement in the
+            // file. What a heading is instead asked for is that it hold together, so a second
+            // noun phrase begun with nothing linking it to the first is the same breach it would
+            // have been in a sentence.
+            let clause = if self.phrasal {
+                if params.frame.outer.is_none() && params.frame.subject != Subject::None {
+                    Cost::FREE
+                } else {
+                    Rule::NoPredicate.breach()
+                }
+            } else if stands {
                 Cost::FREE
             } else {
                 Rule::NoPredicate.breach()

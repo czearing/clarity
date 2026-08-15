@@ -68,14 +68,52 @@ pub fn check(sentence: &Sentence) -> Report {
 /// A relaxed register drops the requirement it names and no other. Agreement is never relaxed.
 #[must_use]
 pub fn check_in(sentence: &Sentence, register: Register) -> Report {
-    judge(&Reading::of(sentence), register)
+    judge(&Reading::of_in(sentence, register), register)
+}
+
+/// A unit read under each shape it could have.
+///
+/// Whether a unit is a sentence or a phrase cannot be settled by reading it one way and then
+/// asking what was wrong, because a reading charged for a missing verb supplies one and leaves no
+/// evidence that it was ever missing. Both readings have to exist before either can be preferred,
+/// and what prefers one is the passage: a file whose lines are nearly all summary phrases pays
+/// once to say so, and a lone verbless line in a paragraph does not earn that.
+#[derive(Clone, Debug)]
+pub struct Shapes {
+    /// The unit read as a sentence, which is asked for a predicate.
+    sentence: Reading,
+    /// The unit read as a phrase, which is not.
+    phrase: Reading,
+}
+
+impl Shapes {
+    /// Read `unit` under both shapes.
+    #[must_use]
+    pub fn of(unit: &Sentence) -> Self {
+        Self {
+            sentence: Reading::of_in(unit, Register::STRICT),
+            phrase: Reading::of_in(unit, Register::STRICT.without(Convention::Predicate)),
+        }
+    }
+
+    /// The reading `register` asks for.
+    #[must_use]
+    pub fn under(&self, register: Register) -> &Reading {
+        if register.waives(Convention::Predicate) {
+            &self.phrase
+        } else {
+            &self.sentence
+        }
+    }
 }
 
 /// A sentence as the engine read it.
 ///
-/// The reading does not depend on the register: a register decides which faults are held against a
-/// passage, never what its words are. Keeping the two apart is what lets a passage be judged under
-/// every register at the price of reading it once.
+/// The reading depends on the register in one respect only: whether a unit is allowed to be a
+/// phrase. Everything else a register decides is decided about a finished reading, because which
+/// faults are held against a passage is not a question about what its words are. Whether a verb
+/// is expected at all is a different kind of question, and one the search has to be told the
+/// answer to, since a search charged for a missing verb will find one somewhere.
 #[derive(Clone, Debug)]
 pub struct Reading {
     /// The sentence with its contractions mended, which is what was actually read.
@@ -89,9 +127,15 @@ pub struct Reading {
 }
 
 impl Reading {
-    /// Read `sentence` once.
+    /// Read `sentence` once, as a sentence.
     #[must_use]
     pub fn of(sentence: &Sentence) -> Self {
+        Self::of_in(sentence, Register::STRICT)
+    }
+
+    /// Read `sentence` once under `register`.
+    #[must_use]
+    pub fn of_in(sentence: &Sentence, register: Register) -> Self {
         // A contraction is always read with its apostrophe put back, whatever the register.
         // Spelling must never blind the reading: leaving "dont" whole would hide the disagreement
         // in "the train dont move" behind a word the lexicon cannot place. Whether the spelling
@@ -112,7 +156,13 @@ impl Reading {
             })
             .map(|(index, _)| index)
             .collect();
-        let states = states(&mended, Grammar::default());
+        let states = states(
+            &mended,
+            Grammar {
+                phrasal: register.waives(Convention::Predicate),
+                ..Grammar::default()
+            },
+        );
         Self {
             sentence: mended,
             states,

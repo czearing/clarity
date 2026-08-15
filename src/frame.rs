@@ -75,6 +75,77 @@ pub enum Wants {
     BaseForTo,
 }
 
+/// What the clause has made of its subject slot.
+///
+/// Two questions are asked of it and they are not independent. Whether a subject has been read in
+/// this clause tells the first noun phrase from every later one, since the first is the subject
+/// and the rest modify it. Whether a preposition has since opened a phrase tells a joining word
+/// what it is joining: "agreement and predication are structural" joins two subjects and is
+/// plural, while "an answer with full confidence and no margin is" joins two objects inside what
+/// the preposition opened and leaves the singular subject alone. Holding them as one state says
+/// that they are two readings of the same thing, which is where the clause stands in relation to
+/// what it is about.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Slot {
+    /// No subject has been read in this clause.
+    Empty,
+    /// A subject has been read and the phrase in hand is still it.
+    Filled,
+    /// No subject yet, and a preposition has opened a phrase that cannot be one.
+    Modifier,
+    /// A subject has been read and a preposition has opened a phrase modifying it.
+    Modified,
+}
+
+impl Slot {
+    /// Whether a subject has been read in this clause.
+    #[must_use]
+    pub const fn read(self) -> bool {
+        matches!(self, Self::Filled | Self::Modified)
+    }
+
+    /// Whether the phrase in hand modifies the subject rather than being it.
+    #[must_use]
+    pub const fn aside(self) -> bool {
+        matches!(self, Self::Modifier | Self::Modified)
+    }
+
+    /// The slot once `tag` has been read, as far as `tag` alone decides it.
+    ///
+    /// A preposition puts the subject behind it, and everything until the clause moves on belongs
+    /// to the phrase the preposition opened. A verb, a mark or a subordinator moves the clause on,
+    /// so a phrase read after one of those is in front of the subject again.
+    #[must_use]
+    pub const fn after(self, tag: Tag) -> Self {
+        match tag {
+            Tag::Preposition if self.read() => Self::Modified,
+            Tag::Preposition => Self::Modifier,
+            Tag::Verb(_) | Tag::Modal | Tag::Mark(_) | Tag::Subordinator if self.read() => {
+                Self::Filled
+            }
+            Tag::Verb(_) | Tag::Modal | Tag::Mark(_) | Tag::Subordinator => Self::Empty,
+            _ => self,
+        }
+    }
+
+    /// The slot with a subject read into it, or emptied of one.
+    #[must_use]
+    pub const fn filled(self, read: bool) -> Self {
+        match (read, self.aside()) {
+            (true, true) => Self::Modified,
+            (true, false) => Self::Filled,
+            (false, true) => Self::Modifier,
+            (false, false) => Self::Empty,
+        }
+    }
+
+    /// The slot a joined clause starts from, which has read no subject of its own yet.
+    #[must_use]
+    pub const fn restarted(self) -> Self {
+        self.filled(false)
+    }
+}
+
 /// What the clause around a word has seen.
 ///
 /// A subordinate clause suspends the sentence rather than replacing it, so the outer clause is set
@@ -102,7 +173,7 @@ pub struct Frame {
     /// joined clause may also bring its own subject, as in "the dogs run and the cat sleeps", and
     /// an inherited subject has to give way to it. Within a clause the opposite holds: the first
     /// noun phrase is the subject and every later one is a modifier. One bit tells the two apart.
-    pub read: bool,
+    pub slot: Slot,
     /// How far along the phrase being read is.
     pub phrase: Phrase,
     /// What a word has demanded and not yet received.
@@ -123,7 +194,7 @@ impl Frame {
             tensed: false,
             outer: None,
             ever: false,
-            read: false,
+            slot: Slot::Empty,
             phrase: Phrase::Whole,
             wants: Wants::Nothing,
         }
@@ -202,6 +273,7 @@ impl Frame {
         let carried = Self {
             wants: demands(self, tag),
             phrase: phrasing(self.phrase, tag),
+            slot: self.slot.after(tag),
             ..self
         };
         match tag {
@@ -212,7 +284,7 @@ impl Frame {
                 subject: Subject::Empty,
                 tensed: false,
                 outer: Some((self.subject, self.tensed)),
-                read: false,
+                slot: self.slot.restarted(),
                 ..carried
             },
             // A mark closes whatever clause was open and hands the sentence back what it was
@@ -226,7 +298,7 @@ impl Frame {
                 tensed: false,
                 outer: None,
                 ever: self.ever || self.tensed,
-                read: false,
+                slot: self.slot.restarted(),
                 ..carried
             },
             Tag::Mark(Break::Pause) => match self.outer {
@@ -243,6 +315,7 @@ impl Frame {
             // the verb there is nothing left to join but clauses, so a fresh one starts.
             Tag::Coordinator
                 if !self.tensed
+                    && !self.slot.aside()
                     && matches!(
                         self.subject,
                         Subject::Third | Subject::First | Subject::Other
@@ -258,7 +331,7 @@ impl Frame {
             // joined verb to be subjectless and drove it to be read as a noun instead.
             Tag::Coordinator => Self {
                 tensed: false,
-                read: false,
+                slot: self.slot.restarted(),
                 ..carried
             },
             _ => self.reading(tag, carried),
@@ -291,7 +364,7 @@ impl Frame {
                     tensed: true,
                     ever: true,
                     outer: None,
-                    read: true,
+                    slot: carried.slot.filled(true),
                     ..carried
                 }
             }
@@ -320,14 +393,14 @@ impl Frame {
             // or a joining word all leave a phrase open, so the phrase bit is what says the two
             // are unlinked, and no relative pronoun has to be present for the clause to be there.
             _ if !self.tensed
-                && self.read
+                && self.slot.read()
                 && self.phrase == Phrase::Whole
                 && self.outer.is_none()
                 && heads(tag) =>
             {
                 Self {
                     subject: features(tag).unwrap_or(Subject::None),
-                    read: features(tag).is_some(),
+                    slot: carried.slot.filled(features(tag).is_some()),
                     outer: Some((self.subject, self.tensed)),
                     ..carried
                 }
@@ -339,18 +412,20 @@ impl Frame {
             _ if self.tensed => match features(tag) {
                 Some(subject) => Self {
                     subject,
-                    read: true,
+                    slot: carried.slot.filled(true),
                     ..carried
                 },
                 None => carried,
             },
             // Before the verb a noun phrase is the subject if the clause has not read one, and a
             // subject carried over from a joined clause has not been read here.
-            _ if !self.read || matches!(self.subject, Subject::Empty | Subject::None) => Self {
-                subject: features(tag).unwrap_or(Subject::None),
-                read: features(tag).is_some(),
-                ..carried
-            },
+            _ if !self.slot.read() || matches!(self.subject, Subject::Empty | Subject::None) => {
+                Self {
+                    subject: features(tag).unwrap_or(Subject::None),
+                    slot: carried.slot.filled(features(tag).is_some()),
+                    ..carried
+                }
+            }
             _ => carried,
         }
     }
@@ -361,11 +436,25 @@ impl Frame {
 /// A modifier stands inside a phrase and leaves the question where it was. Everything that is not
 /// a modifier settles it: a determiner opens a phrase, a joining word links one to what came
 /// before, a head closes one, and a verb or a mark leaves no phrase in progress at all.
+///
+/// A verb's untensed forms are the exception, and where the phrase already stands is what decides
+/// which way they go. Inside a phrase whose head has not arrived, the form is that phrase: "the
+/// running" names a thing and is finished, while "a tokenised sentence" is still being spelled
+/// out. Anywhere else the form governs what follows it rather than ending anything, which is the
+/// same relation a preposition has to its object. That one distinction is what tells the subject
+/// of "listing them keeps the search exhaustive" from the object of "keeps listing them", and what
+/// keeps "states sharing a key" one phrase headed by "states" instead of two.
 const fn phrasing(so_far: Phrase, tag: Tag) -> Phrase {
     match tag {
         Tag::Determiner(_) | Tag::Numeral => Phrase::Open,
-        Tag::Preposition | Tag::Coordinator | Tag::Subordinator | Tag::To => Phrase::Linked,
-        Tag::Adjective | Tag::Adverb | Tag::Verb(Form::Participle) => so_far,
+        Tag::Adjective | Tag::Adverb => so_far,
+        Tag::Verb(Form::Gerund) if matches!(so_far, Phrase::Open) => Phrase::Whole,
+        Tag::Verb(Form::Participle) if matches!(so_far, Phrase::Open) => so_far,
+        Tag::Preposition
+        | Tag::Coordinator
+        | Tag::Subordinator
+        | Tag::To
+        | Tag::Verb(Form::Gerund | Form::Participle) => Phrase::Linked,
         _ => Phrase::Whole,
     }
 }
