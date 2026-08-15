@@ -271,3 +271,28 @@ fn no_plain_sentence_is_called_wasteful() {
         .collect();
     assert!(scolded.is_empty(), "false alarms: {scolded:?}");
 }
+
+/// A number in the README is a claim about this corpus, so it is checked against this corpus.
+///
+/// A table of results that nothing recomputes goes stale the first time the corpus grows, and a
+/// stale number in a readme is worse than no number: it is a measurement the reader has no reason
+/// to doubt and no way to check.
+#[test]
+fn every_count_the_readme_states_is_the_count_this_corpus_holds() {
+    let readme = std::fs::read_to_string("README.md").expect("the readme is next to the tests");
+    for (claim, held) in [
+        ("Grammatical sentences accepted", GOOD.len()),
+        ("Faulty sentences caught and named", BAD.len()),
+        ("Faulty sentences repaired to clean", BAD.len()),
+        ("Wasteful sentences named", WASTEFUL.len()),
+    ] {
+        let line = readme
+            .lines()
+            .find(|line| line.contains(claim))
+            .unwrap_or_else(|| panic!("the readme no longer claims anything about {claim}"));
+        assert!(
+            line.contains(&format!("{held} of {held}")),
+            "the readme says {line:?}, and the corpus holds {held}"
+        );
+    }
+}

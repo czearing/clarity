@@ -24,6 +24,11 @@
 //! Built on [fitkit](https://github.com/czearing/fitkit), which supplies the search, the cited
 //! laws, and the refusals.
 
+/// The readme, compiled and run as a doctest so no example in it can go stale.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+pub struct Readme;
+
 pub mod assess;
 pub mod check;
 pub mod clarity;
@@ -31,6 +36,7 @@ pub mod condense;
 pub mod frame;
 pub mod grammar;
 pub mod lexicon;
+pub mod prose;
 pub mod register;
 pub mod repair;
 pub mod style;

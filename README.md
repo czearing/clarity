@@ -43,8 +43,10 @@ been told about.
 
 There is no list of genres anywhere in the source. There is a list of *conventions* a passage may or
 may not hold to, and a second dynamic program over the whole passage that recovers which ones it
-kept. A convention is dropped only when dropping it explains more than half the units, and the
-choice is sticky, so one fragment cannot turn a paragraph into verse.
+kept. A passage pays for each convention it drops, once, and any unit may then be read
+under it. Dropping one has to explain more than it costs, so a convention broken once is a mistake
+and a convention broken twice is how the passage is written, and one fragment cannot turn a
+paragraph into verse.
 
 ```rust
 use clarity::register::{of, Convention};
@@ -60,7 +62,7 @@ and plainness. Agreement is deliberately not among them, so no register can excu
 ```rust
 use clarity::register::read;
 
-let found = read("hey\nim running late\nthe train dont move");
+let found = read("hey\nim running late\nthe train were late");
 assert!(!found.last().unwrap().1.faults.is_empty());
 ```
 
@@ -69,33 +71,58 @@ writing, so a form the author never considered is handled the same way as one he
 
 ## Refusal
 
-A word the lexicon cannot place is reported, and the sentence is not called clean:
+Closed classes are listed outright, because English coins no new determiners and no new
+prepositions. Open classes cannot be listed and are not: a word the lexicon has never seen is read
+by its shape, and the categories that shape allows are offered to the search like any others. So a
+word nobody has written before is read, and what is claimed about it is claimed by the rules around
+it rather than by an entry.
 
 ```rust
 use clarity::assess::assess;
 
 let found = assess("the frobnicator runs");
+assert!(found.report.unknown.is_empty(), "it is shaped like a noun, so it is read as one");
+assert!(found.is_clean());
+```
+
+A string that is not shaped like an English word at all is a different matter. Nothing is guessed
+about it, it is reported, and the sentence resting on it is not called clean:
+
+```rust
+use clarity::assess::assess;
+
+let found = assess("the qwrtz runs");
 assert_eq!(found.report.unknown, [1]);
 assert!(!found.is_clean());
 ```
 
 This is the point of the design. An engine that guesses is right most of the time and cannot tell
-you when it is not. This one is right about everything it accepts, and says so when it declines.
+you when it is not. This one says which of the two it is doing.
 
 ## Measured
 
-Every sentence in `tests/corpus.rs` and every passage in `tests/registers.rs` is labelled.
+Every sentence in `tests/corpus.rs` and every passage in `tests/registers.rs` is labelled, and
+every number in the table below is asserted against that corpus by a test, so it cannot go stale
+without the suite going red.
+
+Labelled sentences measure an engine against writing chosen to measure it. `tests/prose.rs`
+measures it against writing that was not: every doc comment and documentation file in this
+repository, written to explain the crate rather than to exercise it. What it still cannot read
+there is counted, held to that count in both directions, and set out in `docs/LIMITS.md`.
 
 | | |
 | --- | --- |
-| Grammatical sentences accepted | 55 of 55, no false alarms |
-| Faulty sentences caught and named | 40 of 40, correct rule every time |
-| Faulty sentences repaired to clean | 40 of 40, never more than two swaps |
+| Grammatical sentences accepted | 74 of 74, no false alarms |
+| Faulty sentences caught and named | 20 of 20, correct rule every time |
+| Faulty sentences repaired to clean | 20 of 20, never more than two swaps |
 | Wasteful sentences named | 12 of 12 |
 | Passages whose conventions were recovered | 5 of 5, and the planted fault caught in each |
-| Check a short sentence | 10.5 us |
-| Check a fifteen word sentence | 36 us |
-| Find a repair | 73 us |
+| Faults left in six hundred units of the crate's own prose | 42, bounded in both directions |
+
+Every example above is compiled and run as a doctest. Timings are what `cargo bench` reports for
+`benches/read.rs`; on the machine that wrote this, checking a short sentence takes about ten
+microseconds, a fifteen word sentence about thirty-five, and finding a repair about seventy. Those
+are the only numbers here that no test asserts, because a time is a fact about a machine.
 
 ## Design
 

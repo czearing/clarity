@@ -26,6 +26,12 @@ pedantic = { level = "deny", priority = -1 }
 name = "read"
 harness = false
 
+# A dynamic program is arithmetic in a loop, and unoptimised arithmetic in a loop is the whole of
+# the running time. The tests read six hundred units of real prose, which takes half a minute
+# optimised and the better part of an hour not.
+[profile.test]
+opt-level = 2
+
 [profile.bench]
 lto = true
 codegen-units = 1
