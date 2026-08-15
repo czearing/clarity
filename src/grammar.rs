@@ -494,16 +494,29 @@ impl Fit for Grammar {
             }
     }
 
-    fn into(&self, to: &State) -> Option<Vec<u32>> {
+    fn apart(&self, at: usize, _state: &State) -> u64 {
+        // A state is a tag together with the clause the tag leaves behind. Only the tag is
+        // reported, so two states that agree about the tag are one answer however differently
+        // they read the clause around it.
+        (at % Tag::every().len()) as u64
+    }
+
+    fn onward(&self, from: &State) -> Option<Vec<u32>> {
+        // A frame carries what the clause is still owed, so reading one more word settles where
+        // the next state's frame must be. There are as many ways onward as there are tags, and no
+        // others: every state whose frame is not the one this word leaves behind is unreachable
+        // from here, not merely expensive.
         let tags = Tag::every().len();
-        let mut found = Vec::new();
-        for (index, frame) in Frame::every().iter().enumerate() {
-            if frame.after(to.tag) == to.frame {
-                let base = index * tags;
-                found.extend((0..tags).map(|offset| u32::try_from(base + offset).unwrap_or(0)));
-            }
-        }
-        Some(found)
+        Some(
+            Tag::every()
+                .iter()
+                .enumerate()
+                .map(|(offset, &tag)| {
+                    let at = from.frame.after(tag).at() * tags + offset;
+                    u32::try_from(at).unwrap_or(0)
+                })
+                .collect(),
+        )
     }
 }
 

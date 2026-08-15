@@ -20,6 +20,7 @@
 //! person singular and nothing finer, so that is one bit rather than a person and a number; the
 //! rest would multiply the search for no gain.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
@@ -129,6 +130,26 @@ impl Frame {
             }
             found
         })
+    }
+
+    /// Where this frame sits in [`every`](Frame::every).
+    ///
+    /// The reachable frames are found by search rather than enumerated, so a frame does not carry
+    /// its own position and has to be looked one up.
+    #[must_use]
+    pub fn at(self) -> usize {
+        static WHERE: OnceLock<HashMap<Frame, usize>> = OnceLock::new();
+        WHERE
+            .get_or_init(|| {
+                Self::every()
+                    .iter()
+                    .enumerate()
+                    .map(|(at, &frame)| (frame, at))
+                    .collect()
+            })
+            .get(&self)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// The frame after a word read as `tag`.
