@@ -75,6 +75,15 @@ const GOOD: &[&str] = &[
     "she walked quickly to the store",
     "the old man was here",
     "we can see the light",
+    // A relative clause with no relative pronoun. The second noun phrase is the subject of a
+    // clause of its own, and nothing but the absence of a link between the two says so.
+    "the conventions a passage holds to are listed",
+    "a word the lexicon cannot place is refused",
+    "the reports she writes are short",
+    // A past participle standing between a determiner and its noun modifies the noun. It is not
+    // the verb of the sentence, and the sentence is not missing a subject for it.
+    "a tokenised sentence is read once",
+    "the chosen reading is cheapest",
 ];
 
 /// Sentences that break a rule, with the rule named so a pass cannot be luck.

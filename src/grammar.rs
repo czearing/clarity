@@ -460,9 +460,12 @@ impl Fit for Grammar {
         // stepping over modifiers, and what makes a second tensed verb in a settled clause cost
         // something at the moment it is chosen.
         let structural = match why(from.tag, to.tag) {
-            // Agreement is priced by the frame now, which sees the actual subject rather than
-            // whatever happened to be the word before.
-            Some(Rule::SubjectVerb) => 0.0,
+            // Agreement and doubled tense are priced by the frame now, which sees the actual
+            // subject and the actual clause rather than whatever happened to be the word before.
+            // Both are reported from the frame too, so charging them here as well would fine a
+            // reading twice for one thing and would fine "a word the lexicon cannot place is
+            // refused", where the two verbs belong to two different clauses.
+            Some(Rule::SubjectVerb | Rule::DoubledTense) => 0.0,
             Some(_) => BREACH,
             None => friction(from.tag, to.tag),
         };
@@ -534,7 +537,7 @@ pub fn disagrees(frame: Frame, tag: Tag) -> bool {
         return false;
     }
     matches!(
-        (frame.subject, tag),
+        (frame.answering(), tag),
         (Subject::Third, Tag::Verb(Form::Base | Form::PastPlural))
             | (
                 Subject::First,
@@ -595,7 +598,7 @@ fn leads_to_verb(tag: Tag) -> bool {
 /// the cabinet is missing" is what let that sentence dodge agreement entirely.
 #[must_use]
 pub fn subjectless(frame: Frame, tag: Tag) -> bool {
-    frame.subject == Subject::None
+    frame.answering() == Subject::None
         && !frame.tensed
         && matches!(
             tag,
