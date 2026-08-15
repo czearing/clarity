@@ -151,7 +151,7 @@ checksum = "9e5e8f6c15a24b9a3ee5efec809ccd006d3b30e8b3bb63c39af737c7f87daa1d"
 [[package]]
 name = "fitkit"
 version = "0.1.0"
-source = "git+https://github.com/czearing/fitkit#c65df3f2c76a09bbde36eb65e7381c7440a197cf"
+source = "git+https://github.com/czearing/fitkit#c174e414d06a35758b1d08770f166f88e8475cfb"
 dependencies = [
  "fitkit-core",
  "fitkit-dp",
@@ -163,17 +163,17 @@ dependencies = [
 [[package]]
 name = "fitkit-core"
 version = "0.1.0"
-source = "git+https://github.com/czearing/fitkit#c65df3f2c76a09bbde36eb65e7381c7440a197cf"
+source = "git+https://github.com/czearing/fitkit#c174e414d06a35758b1d08770f166f88e8475cfb"
 
 [[package]]
 name = "fitkit-dp"
 version = "0.1.0"
-source = "git+https://github.com/czearing/fitkit#c65df3f2c76a09bbde36eb65e7381c7440a197cf"
+source = "git+https://github.com/czearing/fitkit#c174e414d06a35758b1d08770f166f88e8475cfb"
 
 [[package]]
 name = "fitkit-feasible"
 version = "0.1.0"
-source = "git+https://github.com/czearing/fitkit#c65df3f2c76a09bbde36eb65e7381c7440a197cf"
+source = "git+https://github.com/czearing/fitkit#c174e414d06a35758b1d08770f166f88e8475cfb"
 dependencies = [
  "fitkit-core",
  "fitkit-ledger",
@@ -182,7 +182,7 @@ dependencies = [
 [[package]]
 name = "fitkit-fit"
 version = "0.1.0"
-source = "git+https://github.com/czearing/fitkit#c65df3f2c76a09bbde36eb65e7381c7440a197cf"
+source = "git+https://github.com/czearing/fitkit#c174e414d06a35758b1d08770f166f88e8475cfb"
 dependencies = [
  "fitkit-core",
  "fitkit-dp",
@@ -191,7 +191,7 @@ dependencies = [
 [[package]]
 name = "fitkit-guards"
 version = "0.1.0"
-source = "git+https://github.com/czearing/fitkit#c65df3f2c76a09bbde36eb65e7381c7440a197cf"
+source = "git+https://github.com/czearing/fitkit#c174e414d06a35758b1d08770f166f88e8475cfb"
 dependencies = [
  "fitkit-core",
  "fitkit-dp",
@@ -202,7 +202,7 @@ dependencies = [
 [[package]]
 name = "fitkit-ledger"
 version = "0.1.0"
-source = "git+https://github.com/czearing/fitkit#c65df3f2c76a09bbde36eb65e7381c7440a197cf"
+source = "git+https://github.com/czearing/fitkit#c174e414d06a35758b1d08770f166f88e8475cfb"
 dependencies = [
  "fitkit-core",
 ]

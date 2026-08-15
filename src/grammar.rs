@@ -5,7 +5,7 @@
 //! explained rather than asserted. See [`why`].
 
 use fitkit::ask;
-use fitkit::core::{Confidence, Evidence, Reported, Span};
+use fitkit::core::{Confidence, Cost, Evidence, Reported, Scale, Span};
 use fitkit::fit::{Fit, Model, Segmented};
 
 use crate::frame::{Frame, Subject, Wants};
@@ -48,6 +48,16 @@ pub enum Rule {
 }
 
 impl Rule {
+    /// What a step costs where this rule is broken.
+    ///
+    /// The rule names itself in the cost, so a rule charged by the frame and again by a pairwise
+    /// check within one step is paid for once. That is what makes it safe to move a rule into the
+    /// state without hunting down the charge it used to have.
+    #[must_use]
+    pub fn breach(self) -> Cost {
+        Cost::breach(self as u32)
+    }
+
     /// What the rule requires, in one line.
     #[must_use]
     pub fn says(self) -> &'static str {
@@ -144,25 +154,36 @@ fn agrees(subject: Tag, form: Form) -> bool {
     }
 }
 
-/// What a broken rule costs. Far above any sum of frictions a sentence can accumulate, so a
-/// reading breaks a rule only when every reading does.
-pub const BREACH: f64 = 1000.0;
+/// The longest sentence this engine will read, in words.
+const LONGEST: usize = 4096;
+
+/// The most one word can stray from its plainest reading.
+const CEILING: f64 = 8.0;
+
+/// How a step's cost becomes the number the search minimises.
+///
+/// The gap between one broken rule and the next is wider than every friction the longest sentence
+/// can accumulate, so a reading breaks a rule only when every reading does. The framework derives
+/// that gap from the two numbers above rather than leaving it to be chosen by eye.
+fn scale() -> Scale {
+    Scale::over(LONGEST, CEILING)
+}
 
 /// What each step down a word's list of readings costs. Small enough to never outweigh a rule,
 /// large enough to settle a tie in favour of the commoner reading.
 const PREFERENCE: f64 = 0.05;
 
 /// Pairs that are legal but unusual, priced so a plainer reading wins a tie.
-fn friction(from: Tag, to: Tag) -> f64 {
+fn friction(from: Tag, to: Tag) -> Cost {
     match (from, to) {
         (Tag::Determiner(_), Tag::Noun(_) | Tag::Adjective | Tag::Numeral)
         | (Tag::Adjective, Tag::Noun(_))
         | (Tag::Adverb, Tag::Adjective | Tag::Verb(_))
-        | (Tag::Preposition, Tag::Determiner(_) | Tag::Noun(_) | Tag::Proper(_)) => 0.0,
-        (subject, Tag::Verb(_)) if subject.is_nominal() => 0.0,
-        (Tag::Noun(_), Tag::Noun(_)) => 0.5,
-        (Tag::Proper(_), Tag::Noun(_)) => 1.0,
-        _ => 0.25,
+        | (Tag::Preposition, Tag::Determiner(_) | Tag::Noun(_) | Tag::Proper(_)) => Cost::FREE,
+        (subject, Tag::Verb(_)) if subject.is_nominal() => Cost::FREE,
+        (Tag::Noun(_), Tag::Noun(_)) => Cost::friction(0.5),
+        (Tag::Proper(_), Tag::Noun(_)) => Cost::friction(1.0),
+        _ => Cost::friction(0.25),
     }
 }
 
@@ -416,37 +437,42 @@ impl Fit for Grammar {
             // fragment does not have.
             let stands =
                 (params.frame.tensed || params.frame.ever) && params.frame.subject != Subject::None;
-            let clause = if stands { 0.0 } else { BREACH };
+            let clause = if stands {
+                Cost::FREE
+            } else {
+                Rule::NoPredicate.breach()
+            };
             // A demand the sentence never answered is charged here for the same reason: a modal
             // left waiting is not free merely because the sentence stopped before the verb came.
-            let owed = if params.frame.wants == Wants::Nothing {
-                0.0
-            } else {
-                BREACH
+            let owed = match params.frame.wants {
+                Wants::Nothing => Cost::FREE,
+                Wants::BaseForModal => Rule::ModalTakesBase.breach(),
+                Wants::BaseForTo => Rule::ToTakesBase.breach(),
             };
             // A sentence that ends inside a subordinate clause is answerable for both of them, so
-            // a clause opened and never given a verb cannot be a free place to hide one.
+            // a clause opened and never given a verb cannot be a free place to hide one. It is the
+            // same rule the outer clause would break, and naming it says so: a sentence with no
+            // predicate anywhere is one fault, not two.
             let held = match params.frame.outer {
-                Some((_, false)) => BREACH,
-                _ => 0.0,
+                Some((_, false)) => Rule::NoPredicate.breach(),
+                _ => Cost::FREE,
             };
             clause + held + owed
         } else {
-            0.0
+            Cost::FREE
         };
         if self.predicate_at == Some(evidence.at) && !params.tag.is_finite_verb() {
             return f64::INFINITY;
         }
         let ranked = match &evidence.allowed {
-            Reported::Unreported => 0.0,
-            Reported::Known(tags) => tags
-                .iter()
-                .position(|tag| *tag == params.tag)
-                .map_or(f64::INFINITY, |rank| {
-                    PREFERENCE * f64::from(u32::try_from(rank).unwrap_or(u32::MAX))
-                }),
+            Reported::Unreported => Some(Cost::FREE),
+            Reported::Known(tags) => tags.iter().position(|tag| *tag == params.tag).map(|rank| {
+                Cost::friction(
+                    (PREFERENCE * f64::from(u32::try_from(rank).unwrap_or(u32::MAX))).min(CEILING),
+                )
+            }),
         };
-        ranked + bare
+        ranked.map_or(f64::INFINITY, |ranked| scale().price(ranked + bare))
     }
 
     fn transition(&self, from: &State, to: &State) -> f64 {
@@ -462,40 +488,39 @@ impl Fit for Grammar {
         let structural = match why(from.tag, to.tag) {
             // Agreement and doubled tense are priced by the frame now, which sees the actual
             // subject and the actual clause rather than whatever happened to be the word before.
-            // Both are reported from the frame too, so charging them here as well would fine a
-            // reading twice for one thing and would fine "a word the lexicon cannot place is
-            // refused", where the two verbs belong to two different clauses.
-            Some(Rule::SubjectVerb | Rule::DoubledTense) => 0.0,
-            Some(rule) if excused(from.frame, rule) => 0.0,
-            Some(_) => BREACH,
+            // Two adjacent verbs are not two verbs of one clause, so charging them here would fine
+            // "a word the lexicon cannot place is refused", where they belong to two clauses. It
+            // is a wrong charge rather than a second one: a cost names the rule it charges, so the
+            // frame and this arm charging the same rule at the same step would cost once.
+            Some(Rule::SubjectVerb | Rule::DoubledTense) => Cost::FREE,
+            Some(rule) if excused(from.frame, rule) => Cost::FREE,
+            Some(rule) => rule.breach(),
             None => friction(from.tag, to.tag),
         };
-        structural
+        let owed = unmet(from.frame, to.tag).map_or(Cost::FREE, Rule::breach);
+        let charged = structural
+            + owed
             + if disagrees(from.frame, to.tag) {
-                BREACH
+                Rule::SubjectVerb.breach()
             } else {
-                0.0
+                Cost::FREE
             }
             + if doubles(from.frame, to.tag) {
-                BREACH
+                Rule::DoubledTense.breach()
             } else {
-                0.0
+                Cost::FREE
             }
             + if subjectless(from.frame, to.tag) {
-                BREACH
+                Rule::Subjectless.breach()
             } else {
-                0.0
-            }
-            + if unmet(from.frame, to.tag).is_some() {
-                BREACH
-            } else {
-                0.0
+                Cost::FREE
             }
             + if stranded(from.frame, to.tag) {
-                BREACH
+                Rule::StrandedParticiple.breach()
             } else {
-                0.0
-            }
+                Cost::FREE
+            };
+        scale().price(charged)
     }
 
     fn apart(&self, at: usize, _state: &State) -> u64 {
@@ -641,7 +666,9 @@ pub fn doubles(frame: Frame, tag: Tag) -> bool {
 mod tests {
     use fitkit::fit::recover;
 
-    use super::{unmet, why, Frame, Grammar, Rule, Sentence};
+    use fitkit_guards::assert_friction_never_reaches_a_rule;
+
+    use super::{scale, unmet, why, Cost, Frame, Grammar, Rule, Sentence, CEILING, LONGEST};
     use crate::tag::{Form, Number, Tag};
 
     fn tags(text: &str) -> Vec<Tag> {
@@ -694,5 +721,16 @@ mod tests {
             .after(Tag::Modal)
             .after(Tag::Verb(Form::Base));
         assert_eq!(unmet(answered, Tag::Noun(Number::Singular)), None);
+    }
+    #[test]
+    fn no_run_of_friction_reaches_a_broken_rule() {
+        assert_friction_never_reaches_a_rule(scale(), LONGEST, Cost::friction(CEILING));
+    }
+
+    #[test]
+    fn one_rule_charged_by_the_frame_and_by_a_pair_costs_once() {
+        let once = Rule::SubjectVerb.breach();
+        assert_eq!((once + once).breaches(), 1);
+        assert_eq!((once + Rule::DoubledTense.breach()).breaches(), 2);
     }
 }

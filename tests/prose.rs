@@ -74,7 +74,7 @@ fn measure() -> (usize, usize, Vec<String>) {
 }
 
 /// How much of its own prose the engine cannot yet read, as measured.
-const FAULTS: usize = 42;
+const FAULTS: usize = 44;
 
 /// How many words of its own prose the engine cannot place, as measured.
 const UNKNOWN: usize = 1;

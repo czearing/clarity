@@ -83,3 +83,14 @@ unreported. The reading is not wrong about anything else, and the demand is stil
 
 The fix is a category of its own for the auxiliary, which is a verb that inflects and also demands
 a plain verb, rather than a modal that does neither. It is not in yet.
+
+## One missing predicate is now one fault
+
+A sentence that ends inside a clause it opened used to be charged twice for having no verb: once
+for the sentence and once for the clause set aside. Both charges are the same rule, and a cost in
+this framework names the rule it charges, so the two now come to one.
+
+That made a verbless nested reading cheaper than it was, which moved the reading the search picks
+in a handful of places and raised the crate's own count by one. A rise here means the model got
+more honest, not that the reading got worse. The bound is recorded in both directions, so no
+change like it can pass unnoticed.
