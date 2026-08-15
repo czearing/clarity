@@ -77,6 +77,14 @@ pub struct Frame {
     /// Asking that frame whether the sentence had a predicate would answer no for every sentence,
     /// which is why the answer is kept rather than read off the end.
     pub ever: bool,
+    /// Whether the subject in the slot was read in this clause or inherited from the last one.
+    ///
+    /// A predicate joined to another answers to the same subject, as in "a sentence is credited
+    /// with nothing and keeps only its price", so the slot may not be emptied at the join. But a
+    /// joined clause may also bring its own subject, as in "the dogs run and the cat sleeps", and
+    /// an inherited subject has to give way to it. Within a clause the opposite holds: the first
+    /// noun phrase is the subject and every later one is a modifier. One bit tells the two apart.
+    pub read: bool,
     /// What a word has demanded and not yet received.
     ///
     /// A grammar written as a list of forbidden pairs has a hole wherever a pair was not listed,
@@ -95,6 +103,7 @@ impl Frame {
             tensed: false,
             outer: None,
             ever: false,
+            read: false,
             wants: Wants::Nothing,
         }
     }
@@ -167,6 +176,7 @@ impl Frame {
                 subject: Subject::Empty,
                 tensed: false,
                 outer: Some((self.subject, self.tensed)),
+                read: false,
                 ..carried
             },
             // A mark closes whatever clause was open and hands the sentence back what it was
@@ -180,6 +190,7 @@ impl Frame {
                 tensed: false,
                 outer: None,
                 ever: self.ever || self.tensed,
+                read: false,
                 ..carried
             },
             Tag::Mark(Break::Pause) => match self.outer {
@@ -206,9 +217,12 @@ impl Frame {
                     ..carried
                 }
             }
+            // After the verb a joining word starts a fresh predicate, which answers to the same
+            // subject unless a new noun phrase supplies one. Clearing the subject here forced the
+            // joined verb to be subjectless and drove it to be read as a noun instead.
             Tag::Coordinator => Self {
-                subject: Subject::Empty,
                 tensed: false,
+                read: false,
                 ..carried
             },
             // A verb spends the subject it agreed with, and the slot is then free to hold the
@@ -221,7 +235,12 @@ impl Frame {
                 ever: true,
                 ..carried
             },
-            Tag::Modal if !self.tensed => Self {
+            // A modal is the finite verb of its clause and can be nothing else, so it takes the
+            // tense and spends the subject whether or not a verb has already been read. Skipping it
+            // in a clause that was already tensed left the modal's complement to be judged as a
+            // finite verb against a subject two clauses away, which is what made "the category a
+            // word can hold" read "hold" as a noun to escape an agreement it was never in.
+            Tag::Modal => Self {
                 subject: spent(self.subject),
                 tensed: true,
                 ever: true,
@@ -232,11 +251,18 @@ impl Frame {
             // verb the opposite holds: the nearest noun phrase is the one a following verb would
             // belong to, so it replaces whatever was there.
             _ if self.tensed => match features(tag) {
-                Some(subject) => Self { subject, ..carried },
+                Some(subject) => Self {
+                    subject,
+                    read: true,
+                    ..carried
+                },
                 None => carried,
             },
-            _ if matches!(self.subject, Subject::Empty | Subject::None) => Self {
+            // Before the verb a noun phrase is the subject if the clause has not read one, and a
+            // subject carried over from a joined clause has not been read here.
+            _ if !self.read || matches!(self.subject, Subject::Empty | Subject::None) => Self {
                 subject: features(tag).unwrap_or(Subject::None),
+                read: features(tag).is_some(),
                 ..carried
             },
             _ => carried,
@@ -265,8 +291,12 @@ fn demands(frame: Frame, tag: Tag) -> Wants {
 const fn spent(subject: Subject) -> Subject {
     match subject {
         Subject::Empty => Subject::Command,
-        Subject::None => Subject::None,
-        _ => Subject::Empty,
+        // A clause keeps who it is about after its verb has agreed with it, because a second verb
+        // joined to the first answers to the same subject: "a sentence is credited with nothing
+        // and keeps only its price". Emptying the slot made the joined verb subjectless, and the
+        // cheapest escape was to read it as a plural noun. A noun phrase that follows replaces the
+        // subject on its own, so nothing is needed here to let the next clause have its own.
+        other => other,
     }
 }
 

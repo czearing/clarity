@@ -309,6 +309,19 @@ const IRREGULAR_VERBS: &[(&str, &[Form])] = &[
 
 /// Nouns whose plural no rule derives.
 const IRREGULAR_NOUNS: &[(&str, Number)] = &[
+    // A cardinal names a quantity as well as counting one. "two dogs" has it introducing a phrase
+    // and "the rules divide in two" has it being one, and the second is not a determiner whose
+    // noun went missing. The digits already read both ways; the words for them must too.
+    ("one", Number::Singular),
+    ("two", Number::Plural),
+    ("three", Number::Plural),
+    ("four", Number::Plural),
+    ("five", Number::Plural),
+    ("six", Number::Plural),
+    ("seven", Number::Plural),
+    ("eight", Number::Plural),
+    ("nine", Number::Plural),
+    ("ten", Number::Plural),
     ("man", Number::Singular),
     ("men", Number::Plural),
     ("woman", Number::Singular),
@@ -463,7 +476,19 @@ const SUBORDINATORS: &[&str] = &[
 ];
 
 /// Adverbs that no suffix reveals.
+///
+/// Some of these are also prepositions. A word like "above" heads a phrase in "above the line" and
+/// stands alone in "the rules above", and the second is not a preposition that lost its object: it
+/// is the adverb, which takes none. Listing only the preposition leaves the search no way to read
+/// the second except by pressing the next word into service as the object.
 const BARE_ADVERBS: &[&str] = &[
+    "above",
+    "below",
+    "abroad",
+    "afterwards",
+    // Post-modifies a pronoun, as in "anything else". It attaches to what came before rather than
+    // taking anything after it, which is what an adverb does and what a noun does not.
+    "else",
     "not",
     "never",
     "always",
@@ -744,7 +769,10 @@ fn listed(key: &str) -> Option<Vec<Tag>> {
         return Some(vec![Tag::Numeral]);
     }
     if key.chars().all(|c| !c.is_alphanumeric()) {
-        let ends = key.contains(['.', '!', '?', ';']);
+        // A colon and a semicolon end the clause before them exactly as a full stop does: what
+        // follows a colon is a new clause, not a continuation of the one that introduced it. Only
+        // a comma pauses inside a clause and hands back what the sentence set aside.
+        let ends = key.contains(['.', '!', '?', ';', ':']);
         return Some(vec![Tag::Mark(if ends {
             Break::Stop
         } else {

@@ -527,9 +527,12 @@ impl Fit for Grammar {
 /// cabinets is missing`, and there is no rule about stepping over the words in between.
 #[must_use]
 pub fn disagrees(frame: Frame, tag: Tag) -> bool {
-    // A verb answering a demand is not the verb the subject agrees with. "We can no longer buy it"
-    // has its agreement settled by "can", and asking "buy" to agree as well would fault every
-    // sentence that puts a word between a modal and its verb.
+    // A verb answering a demand is not the verb the subject agrees with. "She can walk" has its
+    // agreement settled by "can", and asking "walk" to agree as well would fault every modal that
+    // kept the subject it agreed with.
+    if frame.wants != Wants::Nothing {
+        return false;
+    }
     matches!(
         (frame.subject, tag),
         (Subject::Third, Tag::Verb(Form::Base | Form::PastPlural))
