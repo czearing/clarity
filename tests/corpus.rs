@@ -87,6 +87,9 @@ const GOOD: &[&str] = &[
     // A preposition left with nothing after it, because its object is at the front of the clause.
     "whatever it still pays for is wrong",
     "the cabinet she took it from is empty",
+    // A word whose spelling ends in the plural's ending without being a plural.
+    "a chorus repeats itself",
+    "the analysis of the data is complete",
 ];
 
 /// Sentences that break a rule, with the rule named so a pass cannot be luck.

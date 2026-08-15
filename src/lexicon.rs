@@ -879,14 +879,26 @@ fn inflected(key: &str, capitalised: bool) -> Vec<Tag> {
             // singular verb, and the two are spelled alike in every regular word.
             tags.push(Tag::Noun(Number::Plural));
             tags.push(Tag::Verb(Form::ThirdSingular));
+            // English does not spell a plural by adding a bare s to a stem that ends in u or i.
+            // A word shaped that way is likelier one thing whose spelling happens to end in s,
+            // as "chorus" and "analysis" are, so that reading is offered as well and the sentence
+            // around it decides. Reading it as a plural is what charged "a chorus repeats itself"
+            // twice for a word that was never plural.
+            if stem.ends_with(['u', 'i']) {
+                tags.push(Tag::Noun(Number::Singular));
+            }
         }
     }
     if capitalised {
         tags.retain(|tag| !matches!(tag, Tag::Noun(_)));
     }
-    // An ending narrows what a word is likeliest to be, never what it can be: "multiply" ends in
-    // the adverb's ending and is a verb. The two open classes are therefore always offered, last,
-    // where the ranking makes them cost more than any reading the ending actually supports.
+    // A derivational ending narrows what a word is likeliest to be, never what it can be:
+    // "multiply" ends in the adverb's ending and is a verb. So the two open classes are offered
+    // last, where the ranking makes them cost more than any reading the ending supports.
+    //
+    // An inflectional ending is not like that. It settles which form of a verb the word is, and
+    // a word spelled "walks" is that verb's third person singular and cannot also be its plain
+    // form. So a word an inflection has already placed is not offered the plain form as well.
     let inflected = tags
         .iter()
         .any(|tag| matches!(tag, Tag::Verb(_) | Tag::Noun(Number::Plural)));
@@ -929,6 +941,32 @@ mod tests {
         // asked to lead the list rather than to be alone in it.
         assert_eq!(these.first(), Some(&Tag::Determiner(Number::Plural)));
         assert!(!these.contains(&Tag::Determiner(Number::Singular)));
+    }
+
+    #[test]
+    fn a_word_whose_stem_english_would_not_pluralise_is_offered_whole() {
+        let Reported::Known(offered) = tags("chorus") else {
+            panic!("chorus is placeable");
+        };
+        assert!(
+            offered.contains(&Tag::Noun(Number::Singular)),
+            "{offered:?}"
+        );
+        let Reported::Known(regular) = tags("dogs") else {
+            panic!("dogs is placeable");
+        };
+        assert!(
+            !regular.contains(&Tag::Noun(Number::Singular)),
+            "{regular:?}"
+        );
+    }
+
+    #[test]
+    fn an_inflection_settles_which_form_of_a_verb_a_word_is() {
+        let Reported::Known(offered) = tags("walks") else {
+            panic!("walks is placeable");
+        };
+        assert!(!offered.contains(&Tag::Verb(Form::Base)), "{offered:?}");
     }
 
     #[test]
