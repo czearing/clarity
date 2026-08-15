@@ -8,8 +8,8 @@ use fitkit::fit::recover;
 use fitkit::Reported;
 
 use crate::grammar::{
-    disagrees, doubles, is_imperative, stranded, subjectless, unmet, why, Grammar, Rule, Sentence,
-    State,
+    disagrees, doubles, excused, is_imperative, stranded, subjectless, unmet, why, Grammar, Rule,
+    Sentence, State,
 };
 use crate::lexicon::Lexicon;
 use crate::register::{Convention, Register};
@@ -133,12 +133,14 @@ impl Reading {
 pub fn judge(reading: &Reading, register: Register) -> Report {
     let tags = reading.tags();
     let sentence = &reading.sentence;
-    let mut faults: Vec<Fault> = tags
+    let mut faults: Vec<Fault> = reading
+        .states
         .windows(2)
         .enumerate()
         .filter_map(|(index, pair)| {
-            why(pair[0], pair[1])
+            why(pair[0].tag, pair[1].tag)
                 .filter(|rule| !matches!(rule, Rule::SubjectVerb | Rule::DoubledTense))
+                .filter(|rule| !excused(pair[0].frame, *rule))
                 .map(|rule| Fault {
                     at: Span::new(index, index + 2),
                     rule,

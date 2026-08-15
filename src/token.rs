@@ -33,7 +33,7 @@ impl Token {
 pub fn tokenise(text: &str) -> Vec<Token> {
     let mut tokens = Vec::new();
     let mut start = None;
-    let spans = addresses(text);
+    let spans = names(text);
     let mut skip_to = 0;
     for (at, character) in text.char_indices() {
         if at < skip_to {
@@ -56,7 +56,9 @@ pub fn tokenise(text: &str) -> Vec<Token> {
             }
             _ => {}
         }
-        if !part_of_word && !character.is_whitespace() {
+        // Emphasis, escapes and headings are how a medium is written down, not how English is.
+        // A reader sees the word inside them and no mark at all, so nothing is emitted for them.
+        if !part_of_word && !character.is_whitespace() && !FORMATTING.contains(character) {
             push(&mut tokens, text, at, at + character.len_utf8());
         }
     }
@@ -66,43 +68,53 @@ pub fn tokenise(text: &str) -> Vec<Token> {
     fold_mentions(tokens)
 }
 
-/// Where the addresses are in `text`.
+/// Where the names are in `text`.
 ///
-/// A web address or a file path is one name, not a sentence. Split on its punctuation it becomes a
-/// string of unknown words joined by marks, and every rule about what may follow a mark then fires
-/// inside something that was never prose. It is found by its scheme or by its separators rather
-/// than by a list of hosts or extensions, so an address the author invented reads like any other.
-fn addresses(text: &str) -> Vec<Span> {
+/// A web address, a file path, or an identifier is one name, not a sentence. Split on its
+/// punctuation it becomes a string of unknown words joined by marks, and every rule about what may
+/// follow a mark then fires inside something that was never prose.
+///
+/// A name is found by its separators rather than by a list of hosts, extensions or namespaces, so
+/// a name the author invented reads like any one already known. English does not join words with a
+/// slash, does not put a stop in the middle of a word, and does not use an underscore at all, so a
+/// run of non-space characters that does any of those is not English and is read as the one thing
+/// it names.
+fn names(text: &str) -> Vec<Span> {
     let mut found = Vec::new();
-    let bytes = text.as_bytes();
     let mut at = 0;
     while at < text.len() {
-        if !text.is_char_boundary(at) {
-            at += 1;
-            continue;
+        let Some(offset) = text[at..].find(|character: char| !character.is_whitespace()) else {
+            break;
+        };
+        let from = at + offset;
+        let to = text[from..]
+            .find(char::is_whitespace)
+            .map_or(text.len(), |end| from + end);
+        let run = text[from..to].trim_end_matches(['.', ',', ';', ':', '!', '?', ')']);
+        if named(run) {
+            found.push(Span::new(from, from + run.len()));
         }
-        let rest = &text[at..];
-        let starts = at == 0 || bytes[at - 1].is_ascii_whitespace() || bytes[at - 1] == b'(';
-        let addressed = rest.starts_with("http://")
-            || rest.starts_with("https://")
-            || rest.starts_with("www.")
-            || rest.starts_with("./")
-            || rest.starts_with("../");
-        if starts && addressed {
-            let end = rest
-                .find(|character: char| character.is_whitespace() || character == ')')
-                .map_or(text.len(), |offset| at + offset);
-            let end = text[..end].trim_end_matches(['.', ',', ';', ':']).len();
-            found.push(Span::new(at, end));
-            at = end;
-            continue;
-        }
-        at += 1;
+        at = to;
     }
     found
 }
 
-/// Push a whole address as one name.
+/// Whether a run of non-space characters is a name rather than a word.
+fn named(run: &str) -> bool {
+    if run.is_empty() {
+        return false;
+    }
+    if run.contains('/') || run.contains('_') || run.contains("::") {
+        return true;
+    }
+    // A stop with a letter or a digit straight after it is not the end of a sentence, because a
+    // sentence never resumes without a space. It is the separator inside a name.
+    run.char_indices().any(|(at, character)| {
+        character == '.' && run[at + 1..].starts_with(|next: char| next.is_alphanumeric())
+    })
+}
+
+/// Push a whole run as one name.
 fn push_address(tokens: &mut Vec<Token>, text: &str, from: usize, to: usize) {
     let word = text[from..to].to_owned();
     tokens.push(Token {
@@ -113,6 +125,9 @@ fn push_address(tokens: &mut Vec<Token>, text: &str, from: usize, to: usize) {
         mention: true,
     });
 }
+
+/// Characters that mark up a medium rather than punctuating a sentence.
+const FORMATTING: &str = "*\\#~|";
 
 /// Marks that open and close a term being named rather than used.
 const QUOTES: &[&str] = &["\"", "`", "\u{201c}", "\u{201d}"];
@@ -295,6 +310,40 @@ fn split(token: &Token) -> Option<(Token, Token)> {
 #[cfg(test)]
 mod tests {
     use super::tokenise;
+
+    #[test]
+    fn a_run_joined_by_a_separator_english_never_uses_is_one_name() {
+        for run in [
+            "tests/corpus.rs",
+            "Frame::every",
+            "read_to_string",
+            "docs/LIMITS.md",
+        ] {
+            let text = format!("See {run} for this.");
+            let tokens = tokenise(&text);
+            let words: Vec<&str> = tokens.iter().map(|t| t.word.as_str()).collect();
+            assert_eq!(words, ["See", run, "for", "this", "."], "{run}");
+        }
+    }
+
+    #[test]
+    fn a_stop_inside_a_name_does_not_end_the_sentence() {
+        let tokens = tokenise("tests/corpus.rs is labelled.");
+        assert_eq!(
+            tokens.iter().filter(|t| t.ends_sentence()).count(),
+            1,
+            "only the final stop ends the sentence"
+        );
+    }
+
+    #[test]
+    fn how_a_medium_is_written_down_is_not_read_as_punctuation() {
+        let tokens = tokenise("What is wrong is the *selection*.");
+        assert_eq!(
+            tokens.iter().map(|t| t.word.as_str()).collect::<Vec<_>>(),
+            ["What", "is", "wrong", "is", "the", "selection", "."]
+        );
+    }
 
     #[test]
     fn marks_are_their_own_tokens() {

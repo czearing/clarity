@@ -466,6 +466,7 @@ impl Fit for Grammar {
             // reading twice for one thing and would fine "a word the lexicon cannot place is
             // refused", where the two verbs belong to two different clauses.
             Some(Rule::SubjectVerb | Rule::DoubledTense) => 0.0,
+            Some(rule) if excused(from.frame, rule) => 0.0,
             Some(_) => BREACH,
             None => friction(from.tag, to.tag),
         };
@@ -521,6 +522,17 @@ impl Fit for Grammar {
                 .collect(),
         )
     }
+}
+
+/// Whether a rule a pair of tags breaks is answered for by the clause they sit in.
+///
+/// A preposition normally takes a noun phrase, but a clause held inside another may have had that
+/// noun phrase fronted, which leaves the preposition with nothing after it: "whatever it still
+/// pays for is wrong", "the conventions a passage holds to". Nothing is missing there, the object
+/// is at the front of the clause, and the only thing that says so is that a clause is open.
+#[must_use]
+pub fn excused(frame: Frame, rule: Rule) -> bool {
+    rule == Rule::PrepositionTarget && frame.open()
 }
 
 /// Whether a tensed verb fails to agree with the subject its clause is carrying.

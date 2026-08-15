@@ -84,6 +84,9 @@ const GOOD: &[&str] = &[
     // the verb of the sentence, and the sentence is not missing a subject for it.
     "a tokenised sentence is read once",
     "the chosen reading is cheapest",
+    // A preposition left with nothing after it, because its object is at the front of the clause.
+    "whatever it still pays for is wrong",
+    "the cabinet she took it from is empty",
 ];
 
 /// Sentences that break a rule, with the rule named so a pass cannot be luck.
