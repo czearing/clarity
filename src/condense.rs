@@ -118,7 +118,11 @@ struct Candidate {
 pub fn condense(passage: &str) -> Core {
     let text = Text::read(passage);
     let about = terms(&text.units);
-    let candidates: Vec<Candidate> = text.units.iter().map(|unit| price(unit, &about)).collect();
+    let candidates: Vec<Candidate> = text
+        .units
+        .iter()
+        .map(|unit| price(unit, &about, passage))
+        .collect();
 
     let chosen = choose(&candidates, about.len());
     let kept: Vec<String> = chosen
@@ -211,7 +215,7 @@ fn choose(candidates: &[Candidate], terms: usize) -> Vec<usize> {
 }
 
 /// Price one sentence and credit it with the terms it carries.
-fn price(unit: &Sentence, about: &[(String, f64)]) -> Candidate {
+fn price(unit: &Sentence, about: &[(String, f64)], source: &str) -> Candidate {
     let report = crate::check::check(unit);
     let tags = report.tags.clone();
     let notes = style::read(unit, &tags);
@@ -236,7 +240,7 @@ fn price(unit: &Sentence, about: &[(String, f64)]) -> Candidate {
         .sum();
 
     Candidate {
-        trimmed: trim(unit, &tags, about, carries),
+        trimmed: trim(unit, &tags, about, carries, source),
         #[allow(clippy::cast_precision_loss)]
         price: unit.tokens.len() as f64 * TOKEN
             + strain.cost as f64 * STRAIN
@@ -258,7 +262,13 @@ fn price(unit: &Sentence, about: &[(String, f64)]) -> Candidate {
 /// on its own. Nothing is decided by recognising an opening phrase, which would only ever catch
 /// the openings someone thought to list. The test is whether the passage loses anything, and an
 /// approach loses nothing by definition, since it is the writer clearing their throat.
-fn trim(unit: &Sentence, tags: &[Tag], about: &[(String, f64)], carries: u16) -> String {
+fn trim(
+    unit: &Sentence,
+    tags: &[Tag],
+    about: &[(String, f64)],
+    carries: u16,
+    source: &str,
+) -> String {
     let mut best = unit.tokens.len();
     let mut start = 0;
 
@@ -310,15 +320,25 @@ fn trim(unit: &Sentence, tags: &[Tag], about: &[(String, f64)], carries: u16) ->
     } else {
         kept
     };
-    let start = if kept.len() == unit.tokens.len() {
-        0
-    } else {
-        start
+    // A cut may not separate a delimiter from its partner. "How a [`Cost`] is turned into" trimmed
+    // at its opening bracket leaves "`Cost`] is turned into", which reads as prose and is not the
+    // text: the bracket that closes it has nothing left to close. Counting the pairs in what would
+    // be kept is what says so, and it says it for every kind of pair at once.
+    let whole = kept.len() == unit.tokens.len();
+    let slice = |tokens: &[Token]| match (tokens.first(), tokens.last()) {
+        (Some(first), Some(last)) => &source[first.at.start..last.at.end],
+        _ => "",
     };
-    let mut text = Sentence {
-        tokens: kept.to_vec(),
-    }
-    .text();
+    let (kept, start) = if whole || paired(slice(kept)) {
+        (kept, if whole { 0 } else { start })
+    } else {
+        (&unit.tokens[..], 0)
+    };
+    // The text is cut out of the passage rather than rebuilt from the tokens. Rebuilding puts one
+    // space between every pair of them, which is not how the passage was written: a link comes
+    // back as "[ `Cost` ]" and a quoted name loses its spacing. A cut is a narrower view of what
+    // was already there, so what it returns is a slice of it.
+    let mut text = slice(kept).to_owned();
     if let Some(first) = text.chars().next() {
         if start > 0 {
             text = first.to_uppercase().collect::<String>() + &text[first.len_utf8()..];
@@ -338,6 +358,39 @@ fn trim(unit: &Sentence, tags: &[Tag], about: &[(String, f64)], carries: u16) ->
 /// How much a register holds against a stretch of tokens.
 fn faults(sentence: &Sentence, register: Register) -> usize {
     crate::check::check_in(sentence, register).faults.len()
+}
+
+/// Whether every delimiter in `text` is closed inside it.
+///
+/// Brackets nest and are counted; a backtick is its own partner and is counted for evenness. A
+/// stretch that opens something it does not close was cut out of the middle of a construction,
+/// whatever that construction was, and no list of constructions is needed to see it.
+fn paired(text: &str) -> bool {
+    let mut open = Vec::new();
+    let mut ticks = 0;
+    for character in text.chars() {
+        match character {
+            '[' | '(' | '{' => open.push(character),
+            ']' => {
+                if open.pop() != Some('[') {
+                    return false;
+                }
+            }
+            ')' => {
+                if open.pop() != Some('(') {
+                    return false;
+                }
+            }
+            '}' => {
+                if open.pop() != Some('{') {
+                    return false;
+                }
+            }
+            '`' => ticks += 1,
+            _ => {}
+        }
+    }
+    open.is_empty() && ticks % 2 == 0
 }
 
 /// Where the connective at the end of a stretch begins.

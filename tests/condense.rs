@@ -118,3 +118,26 @@ fn nothing_is_ever_reduced_to_nothing() {
         );
     }
 }
+
+#[test]
+fn what_is_kept_is_the_text_that_was_there() {
+    // Rebuilt from tokens this comes back as "[ `Cost` ]", and trimmed at the opening bracket it
+    // comes back as "`Cost`] is turned into", which no longer has the bracket that closes it.
+    let passage = "How a [`Cost`] is turned into the single number a search minimises. \
+                   It is the only number the search compares.";
+    let kept = condense(passage).text();
+    assert!(
+        !kept.contains("[ `"),
+        "spacing was rebuilt rather than kept: {kept}"
+    );
+    assert_eq!(
+        kept.matches('[').count(),
+        kept.matches(']').count(),
+        "a bracket was cut away from its partner: {kept}"
+    );
+    assert_eq!(
+        kept.matches('`').count() % 2,
+        0,
+        "a tick lost its partner: {kept}"
+    );
+}

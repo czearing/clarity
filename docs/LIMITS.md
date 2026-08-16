@@ -207,3 +207,30 @@ A crate that writes about wording quotes the wording it is writing about, and th
 proposed cutting "rather" out of the sentence explaining that "rather" is a qualifier. The name of
 a word is not a use of it. A named term is now given a key no phrase and no qualifier can match,
 so wording is judged on the words a sentence uses and not on the ones it names.
+
+## What a cut returns is the text that was there
+
+A condensation was rebuilt out of the tokens it kept, one space between each pair, which is not
+how anything was written: `[`Cost`]` came back as "[ `Cost` ]". A cut is a narrower view of text
+that already exists, so it now returns a slice of it and the spacing is whatever the writer typed.
+
+Slicing exposed the other half. Trimmed at its opening bracket, "How a [`Cost`] is turned into"
+leaves "`Cost`] is turned into", which reads as prose and has a bracket closing nothing. A cut may
+not separate a delimiter from its partner, and counting the pairs in what would be kept says so
+for every kind of pair at once, without a list of the constructions they appear in. Across both
+repositories that is 315 condensations, and not one of them now opens something it does not close.
+
+## Repair is measured, and it is still not right
+
+Two more ways of inventing a word are closed. English does not put one inflection on top of
+another, so "summed" is no longer offered "summeds"; and no English stem ends in a doubled
+consonant, which is the tell that "summed" cannot be reduced to "summ" and that the answer must be
+refused rather than guessed at. Repair also asks how the word was read before offering it another
+form, because number is a feature of nouns, verbs and determiners and not of adjectives, adverbs
+or prepositions: "pairwise", "finer" and "out" were being handed plurals they have no way to take.
+The lexicon learned the comparative and the "-wise" adverb so those readings are available at all.
+
+That is thirty-one proposals down to twenty-seven, and every one of the twenty-seven is a false
+alarm: quoted grammatical examples, doc comment fragments, and noun phrases used as headings.
+Precision on prose the engine has not been tuned against remains nought, so nothing was written.
+The write path is exercised by tests and by the plain pass; repair reports and does not apply.

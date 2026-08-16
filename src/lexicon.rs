@@ -943,6 +943,20 @@ fn inflected(key: &str, capitalised: bool) -> Vec<Tag> {
     {
         tags.push(Tag::Adjective);
     }
+    // A comparative and a superlative are adjectives, and nothing else in English is spelled this
+    // way off a stem this long. Without them "finer" is read as a noun, and a noun has a plural,
+    // so a repair looking for one offered "finers".
+    if let Some(stem) = key.strip_suffix("er").or_else(|| key.strip_suffix("est")) {
+        if stem.len() >= 3 {
+            tags.push(Tag::Adjective);
+        }
+    }
+    // "-wise" makes an adverb of manner off a noun: "pairwise", "clockwise", "otherwise".
+    if let Some(stem) = key.strip_suffix("wise") {
+        if stem.len() >= 3 {
+            tags.push(Tag::Adverb);
+        }
+    }
     if let Some(stem) = key.strip_suffix('s') {
         if stem.len() >= 2 && !stem.ends_with('s') {
             // The plural noun comes first because it is far commoner than the third person
