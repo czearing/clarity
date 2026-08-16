@@ -7,7 +7,7 @@
 use fitkit::core::{Answer, Refusal, Reported};
 use fitkit::{Citation, Law};
 
-use crate::tag::{Break, Case, Form, Number, Person, Tag};
+use crate::tag::{Break, Case, Form, Join, Number, Person, Tag};
 use crate::token::Token;
 
 /// Determiners, with the number each one permits.
@@ -119,6 +119,20 @@ const PRONOUNS: &[(&str, Person, Number, Case)] = &[
     ("such", Person::Third, Number::Singular, Case::Either),
     ("whatever", Person::Third, Number::Singular, Case::Either),
     ("whichever", Person::Third, Number::Singular, Case::Either),
+    ("no", Person::Third, Number::Singular, Case::Either),
+    ("each", Person::Third, Number::Singular, Case::Either),
+    ("either", Person::Third, Number::Singular, Case::Either),
+    ("neither", Person::Third, Number::Singular, Case::Either),
+    ("this", Person::Third, Number::Singular, Case::Either),
+    ("that", Person::Third, Number::Singular, Case::Either),
+    ("these", Person::Third, Number::Plural, Case::Either),
+    ("those", Person::Third, Number::Plural, Case::Either),
+    // "what" opening a clause with no noun to attach to is standing in for its own head: "what
+    // follows" is the thing that follows. "which" and "who" are deliberately not here. They can
+    // do the same job in a question, but in prose a sentence starting "which" is almost always a
+    // relative clause left standing on its own, and reading it as a sentence costs more than it
+    // returns: it kept a padded comment from being cut down to its point.
+    ("what", Person::Third, Number::Singular, Case::Either),
 ];
 
 /// Verb forms that no rule can derive, listed by form.
@@ -433,8 +447,18 @@ const PREPOSITIONS: &[&str] = &[
     "without",
 ];
 
-/// Coordinators, exhaustive for the central class.
-const COORDINATORS: &[&str] = &["and", "or", "but", "nor", "yet", "so"];
+/// Coordinators, exhaustive for the central class, each with what it does to what it joins.
+///
+/// Only "and" adds. Every other coordinator offers one of its terms rather than both, so a subject
+/// it joins agrees with whichever term stands nearest the verb.
+const COORDINATORS: &[(&str, Join)] = &[
+    ("and", Join::Sum),
+    ("or", Join::Choice),
+    ("but", Join::Choice),
+    ("nor", Join::Choice),
+    ("yet", Join::Choice),
+    ("so", Join::Choice),
+];
 
 /// Subordinators, the common core.
 const SUBORDINATORS: &[&str] = &[
@@ -519,6 +543,37 @@ const BARE_ADVERBS: &[&str] = &[
     "thus",
     "instead",
     "again",
+    "ever",
+    "together",
+    "apart",
+    "aside",
+    "alike",
+    "alone",
+    "ahead",
+    "away",
+    "onward",
+    "onwards",
+    "forward",
+    "forwards",
+    "backwards",
+    "upwards",
+    "downwards",
+    "inwards",
+    "outwards",
+    "elsewhere",
+    "otherwise",
+    "meanwhile",
+    "likewise",
+    "besides",
+    "indeed",
+    "hence",
+    "nevertheless",
+    "nonetheless",
+    "moreover",
+    "altogether",
+    "anyway",
+    "once",
+    "twice",
     "n't",
 ];
 
@@ -698,7 +753,7 @@ pub fn is_closed(key: &str) -> bool {
                 Tag::Determiner(_)
                     | Tag::Pronoun(..)
                     | Tag::Preposition
-                    | Tag::Coordinator
+                    | Tag::Coordinator(_)
                     | Tag::Subordinator
                     | Tag::Modal
                     | Tag::To
@@ -819,8 +874,8 @@ fn listed(key: &str) -> Option<Vec<Tag>> {
     if PREPOSITIONS.contains(&key) {
         tags.push(Tag::Preposition);
     }
-    if COORDINATORS.contains(&key) {
-        tags.push(Tag::Coordinator);
+    if let Some((_, join)) = COORDINATORS.iter().find(|(word, _)| *word == key) {
+        tags.push(Tag::Coordinator(*join));
     }
     if SUBORDINATORS.contains(&key) {
         tags.push(Tag::Subordinator);
@@ -879,7 +934,12 @@ fn inflected(key: &str, capitalised: bool) -> Vec<Tag> {
     {
         tags.push(Tag::Noun(Number::Singular));
     }
-    if key.ends_with("ous") || key.ends_with("ful") || key.ends_with("ive") || key.ends_with("able")
+    if key.ends_with("ous")
+        || key.ends_with("ful")
+        || key.ends_with("ive")
+        || key.ends_with("able")
+        || key.ends_with("ic")
+        || key.ends_with("less")
     {
         tags.push(Tag::Adjective);
     }

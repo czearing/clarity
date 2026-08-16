@@ -172,10 +172,16 @@ impl Voice {
 
     /// What a passage pays to adopt a set of registers and read every unit under the best of them.
     fn spend(readings: &[Shapes], adopted: &[Register]) -> f64 {
-        let paid: f64 = adopted
-            .iter()
-            .map(|register| ADOPT * f64::from(register.breadth()))
-            .sum();
+        // A convention is described once for the whole passage, so it is paid for once. Charging
+        // each adopted register its own breadth charged the same convention again every time
+        // another register happened to include it, and a passage whose summary lines both drop the
+        // verb and repeat a word was billed for dropping the verb twice. It then declined to adopt
+        // the waiver at all and reported every heading in the file as a disagreement.
+        let waived = Convention::ALL
+            .into_iter()
+            .filter(|held| adopted.iter().any(|register| register.waives(*held)))
+            .count();
+        let paid = ADOPT * f64::from(u32::try_from(waived).unwrap_or(u32::MAX));
         let borne: f64 = readings
             .iter()
             .map(|reading| Self::settle(reading, adopted).1)

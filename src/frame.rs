@@ -16,7 +16,7 @@
 //! needed context become ordinary transition costs. The search can no longer buy its way out of a
 //! fault by moving the fault somewhere the checker was not looking.
 //!
-//! Only what a rule actually consults is kept. English agreement asks whether the subject is third
+//! Only what a rule consults is kept. English agreement asks whether the subject is third
 //! person singular and nothing finer, so that is one bit rather than a person and a number; the
 //! rest would multiply the search for no gain.
 
@@ -24,7 +24,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
-use crate::tag::{Break, Form, Number, Person, Tag};
+use crate::tag::{Break, Form, Join, Number, Person, Tag};
 
 /// How far along the phrase being read is.
 ///
@@ -220,7 +220,7 @@ impl Frame {
         self.outer.is_some()
     }
 
-    /// Every frame a sentence can actually be in, in a fixed order.
+    /// Every frame a sentence can be in, in a fixed order.
     ///
     /// The fields describe more combinations than the language reaches. Rather than reason about
     /// which, the reachable ones are walked out from the opening frame, so the state space is
@@ -313,7 +313,7 @@ impl Frame {
             // Before the verb a joining word is joining subjects, and two subjects joined are
             // plural however singular each was: "agreement and predication are structural". After
             // the verb there is nothing left to join but clauses, so a fresh one starts.
-            Tag::Coordinator
+            Tag::Coordinator(Join::Sum)
                 if !self.tensed
                     && !self.slot.aside()
                     && matches!(
@@ -329,7 +329,16 @@ impl Frame {
             // After the verb a joining word starts a fresh predicate, which answers to the same
             // subject unless a new noun phrase supplies one. Clearing the subject here forced the
             // joined verb to be subjectless and drove it to be read as a noun instead.
-            Tag::Coordinator => Self {
+            // A coordinator offering a choice before the verb does not add its terms, so the
+            // subject is not made plural: it is handed back to whichever noun phrase comes next,
+            // and the verb agrees with that one. "A web address, a file path, or an identifier is
+            // one name" is about one of the three at a time.
+            Tag::Coordinator(Join::Choice) if !self.tensed && !self.slot.aside() => Self {
+                subject: Subject::None,
+                slot: self.slot.restarted(),
+                ..carried
+            },
+            Tag::Coordinator(_) => Self {
                 tensed: false,
                 slot: self.slot.restarted(),
                 ..carried
@@ -451,7 +460,7 @@ const fn phrasing(so_far: Phrase, tag: Tag) -> Phrase {
         Tag::Verb(Form::Gerund) if matches!(so_far, Phrase::Open) => Phrase::Whole,
         Tag::Verb(Form::Participle) if matches!(so_far, Phrase::Open) => so_far,
         Tag::Preposition
-        | Tag::Coordinator
+        | Tag::Coordinator(_)
         | Tag::Subordinator
         | Tag::To
         | Tag::Verb(Form::Gerund | Form::Participle) => Phrase::Linked,

@@ -4,7 +4,7 @@
 //! the engine against writing chosen to measure it. This one measures it against writing that was
 //! not: the crate's own doc comments and documentation, written to explain the crate and not to
 //! exercise it. Prose nobody wrote for the test is the only prose that can tell you where the
-//! engine actually stands.
+//! engine stands.
 //!
 //! The bound is the count that was measured, so any change that reads this prose worse fails here
 //! and any change that reads it better asks to be recorded. What the remaining faults are, and why
@@ -37,13 +37,13 @@ fn written() -> Vec<String> {
 }
 
 /// What the engine finds in the crate's own writing, read once however often it is asked for.
-fn measured() -> &'static (usize, usize, Vec<String>) {
-    static MEASURED: OnceLock<(usize, usize, Vec<String>)> = OnceLock::new();
+fn measured() -> &'static (usize, Vec<String>, Vec<String>) {
+    static MEASURED: OnceLock<(usize, Vec<String>, Vec<String>)> = OnceLock::new();
     MEASURED.get_or_init(measure)
 }
 
 /// Read every file and count what the engine cannot answer for.
-fn measure() -> (usize, usize, Vec<String>) {
+fn measure() -> (usize, Vec<String>, Vec<String>) {
     let mut units = 0;
     let mut unknown = Vec::new();
     let mut faults = Vec::new();
@@ -70,14 +70,14 @@ fn measure() -> (usize, usize, Vec<String>) {
             }
         }
     }
-    (units, unknown.len(), faults)
+    (units, unknown, faults)
 }
 
 /// How much of its own prose the engine cannot yet read, as measured.
 const FAULTS: usize = 55;
 
 /// How many words of its own prose the engine cannot place, as measured.
-const UNKNOWN: usize = 1;
+const UNKNOWN: usize = 0;
 
 /// How little of its own prose there must be before the count above means anything.
 const UNITS: usize = 500;
@@ -85,7 +85,7 @@ const UNITS: usize = 500;
 #[test]
 fn the_engine_reads_its_own_writing_no_worse_than_it_did() {
     let (units, unknown, faults) = measured();
-    let (units, unknown) = (*units, *unknown);
+    let units = *units;
     assert!(
         units >= UNITS,
         "only {units} units of prose were found, so the counts below prove nothing"
@@ -96,9 +96,12 @@ fn the_engine_reads_its_own_writing_no_worse_than_it_did() {
         faults.len(),
         faults.join("\n")
     );
+    // Equality rather than a bound: the count is at nought, so there is nothing left to be under.
     assert!(
-        unknown <= UNKNOWN,
-        "{unknown} unplaceable words, up from {UNKNOWN}"
+        unknown.len() == UNKNOWN,
+        "{} unplaceable words, up from {UNKNOWN}:\n{}",
+        unknown.len(),
+        unknown.join("\n")
     );
 }
 
@@ -119,7 +122,7 @@ fn the_readme_states_the_count_that_was_measured() {
 #[test]
 fn the_bound_is_the_measurement_and_not_a_ceiling_left_slack() {
     let (_, unknown, faults) = measured();
-    let unknown = *unknown;
+    let unknown = unknown.len();
     assert_eq!(
         faults.len(),
         FAULTS,

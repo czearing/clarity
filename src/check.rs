@@ -116,7 +116,7 @@ impl Shapes {
 /// answer to, since a search charged for a missing verb will find one somewhere.
 #[derive(Clone, Debug)]
 pub struct Reading {
-    /// The sentence with its contractions mended, which is what was actually read.
+    /// The sentence with its contractions mended, which is what was read.
     sentence: Sentence,
     /// The tag and clause context chosen for each token.
     states: Vec<State>,
@@ -149,10 +149,15 @@ impl Reading {
             .iter()
             .enumerate()
             .filter(|(_, token)| {
-                matches!(
-                    fitkit::ask(&Lexicon, token),
-                    Ok(Reported::Unreported) | Err(_)
-                )
+                // A quoted term is a name the writer supplied, and it is placed as one. Holding
+                // it against the lexicon asks whether English lists a thing somebody just named,
+                // which it never will, and every named term would count as a word nobody can
+                // place.
+                !token.mention
+                    && matches!(
+                        fitkit::ask(&Lexicon, token),
+                        Ok(Reported::Unreported) | Err(_)
+                    )
             })
             .map(|(index, _)| index)
             .collect();

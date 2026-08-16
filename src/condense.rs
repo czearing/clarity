@@ -31,6 +31,7 @@
 use crate::clarity;
 use crate::grammar::Sentence;
 use crate::lexicon;
+use crate::register::{Convention, Register};
 use crate::style::{self, Flaw};
 use crate::tag::Tag;
 use crate::text::Text;
@@ -75,7 +76,7 @@ const FLAW: f64 = 0.5;
 
 /// Endings that build an abstract noun out of something else.
 ///
-/// This is the closed set English actually uses. A word wearing one of these names an idea, and a
+/// This is the closed set English uses. A word wearing one of these names an idea, and a
 /// passage made of them is describing itself rather than its subject.
 const ABSTRACT: &[&str] = &[
     "tion", "sion", "ment", "ance", "ence", "ity", "ism", "ness", "ology", "ency", "ancy", "ship",
@@ -275,19 +276,45 @@ fn trim(unit: &Sentence, tags: &[Tag], about: &[(String, f64)], carries: u16) ->
     for at in (start + 1..unit.tokens.len()).rev() {
         let breaks = matches!(
             tags.get(at),
-            Some(Tag::Mark(_) | Tag::Subordinator | Tag::Coordinator)
+            Some(Tag::Mark(_) | Tag::Subordinator | Tag::Coordinator(_))
         );
         if !breaks {
             continue;
         }
+        let at = opens(&tags[start..at]) + start;
+        if at <= start {
+            continue;
+        }
         if holds(&unit.tokens[start..at], about) == carries
             && stands_alone(&unit.tokens[start..at], &tags[start..at], start > 0)
+            && severable(&tags[at..])
         {
             best = at;
         }
     }
 
     let kept = &unit.tokens[start..best];
+    // What is left is put back to the checker before it is offered. A cut that drops a subject and
+    // leaves "does not put a stop in the middle of a word" is not a shorter sentence, it is a
+    // broken one, and the rule that says so is already written down. Judging the offer by the same
+    // reader that judges the prose is what keeps the two from disagreeing.
+    let loose = Register::STRICT.without(Convention::Marks);
+    let kept = if faults(
+        &Sentence {
+            tokens: kept.to_vec(),
+        },
+        loose,
+    ) > faults(unit, loose)
+    {
+        &unit.tokens[..]
+    } else {
+        kept
+    };
+    let start = if kept.len() == unit.tokens.len() {
+        0
+    } else {
+        start
+    };
     let mut text = Sentence {
         tokens: kept.to_vec(),
     }
@@ -297,10 +324,65 @@ fn trim(unit: &Sentence, tags: &[Tag], about: &[(String, f64)], carries: u16) ->
             text = first.to_uppercase().collect::<String>() + &text[first.len_utf8()..];
         }
     }
+    // A cut made at a comma leaves the comma behind, and a comma before a full stop is a mark
+    // waiting for a clause that is no longer there.
+    while text.ends_with([',', ';', ':']) {
+        text.pop();
+    }
     if !text.ends_with('.') && !text.ends_with('?') && !text.ends_with('!') {
         text.push('.');
     }
     text
+}
+
+/// How much a register holds against a stretch of tokens.
+fn faults(sentence: &Sentence, register: Register) -> usize {
+    crate::check::check_in(sentence, register).faults.len()
+}
+
+/// Where the connective at the end of a stretch begins.
+///
+/// A connective is not always one word. "rather than", "as though" and "so that" each join a
+/// clause the way a single subordinator does, and a cut placed between their two words leaves the
+/// first stranded: what remains ends on "rather", which is not the end of anything. So the
+/// boundary is walked back over whatever leads into the connective, and a cut is made where the
+/// connective starts rather than where the tagger happened to name it.
+///
+/// No connective is listed. What is read off the tags is that an adverb or a second subordinator
+/// immediately before one is leading into it, because neither can end a clause that the next word
+/// then continues.
+fn opens(head: &[Tag]) -> usize {
+    let mut at = head.len();
+    while at > 0
+        && matches!(
+            head[at - 1],
+            Tag::Adverb | Tag::Subordinator | Tag::Coordinator(_) | Tag::Preposition | Tag::To
+        )
+    {
+        at -= 1;
+    }
+    at
+}
+
+/// Whether what is being cut off the end is a clause and not a complement.
+///
+/// A sign off is a clause: it has a subject and a verb, and the sentence before it was already
+/// finished. A complement is not, and the words before it are waiting for it. "rather than a
+/// subject rewritten to suit its verb" holds no tensed verb, so it completes what came before
+/// rather than commenting on it, and cutting it leaves the sentence ending on "rather".
+///
+/// Asking whether the tail stands is the same question already asked of the head, put to the other
+/// side of the cut. Neither side may be a piece of a sentence. Nothing here lists a connective:
+/// what disqualifies "rather than" is that no clause follows it, which is read off the tags.
+fn severable(tail: &[Tag]) -> bool {
+    let ends_sentence = tail
+        .iter()
+        .rposition(|tag| matches!(tag, Tag::Mark(crate::tag::Break::Stop)));
+    let body = &tail[..ends_sentence.unwrap_or(tail.len())];
+    body.iter().any(|tag| tag.is_nominal())
+        && body
+            .iter()
+            .any(|tag| tag.is_finite_verb() || matches!(tag, Tag::Modal))
 }
 
 /// Which of the passage's terms a stretch of tokens holds.
@@ -326,7 +408,16 @@ fn stands_alone(tokens: &[Token], tags: &[Tag], moved: bool) -> bool {
     if moved
         && matches!(
             tags.first(),
-            Some(Tag::Subordinator | Tag::Coordinator | Tag::Preposition | Tag::To | Tag::Mark(_))
+            Some(
+                Tag::Subordinator
+                    | Tag::Coordinator(_)
+                    | Tag::Preposition
+                    | Tag::To
+                    | Tag::Mark(_)
+                    | Tag::Verb(_)
+                    | Tag::Modal
+                    | Tag::Adverb
+            )
         )
     {
         return false;

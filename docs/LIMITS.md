@@ -33,7 +33,7 @@ why. Integration cost can.
 ## It infers conventions, and can be wrong about short passages
 
 The register of a passage is recovered from the passage itself. Two or three units carry little
-evidence, so a very short passage is read under whatever convention set is cheapest and that may
+evidence, so a short passage is read under whatever convention set is cheapest and that may
 not be what the writer intended. The engine is at its most confident where there is most to read.
 
 A single sentence handed over on its own is checked under every convention except the closing mark,
@@ -142,3 +142,68 @@ conjugated to give it the verb its register never wanted.
 
 That took eighty-eight proposals to three. All three are still wrong, as are all ten on this crate,
 so the write path is not fit to run unattended and `fix` writes nothing unless asked twice.
+
+## Only a stated rewrite is written
+
+Three passes over documentation now exist and they are not equally safe, which is the whole
+finding. Repair derives a word: it is right about spelling and wrong about whether the word was
+wanted, and on twenty-eight files of fitkit its six surviving proposals are six false alarms.
+Condense selects: every cut it now makes is grammatical, but choosing which sentence carries the
+point is not something fault counting can do, and the sentence it drops is sometimes the one worth
+keeping. Neither is fit to run over a repository.
+
+What is fit is the pass that writes down what it means. A phrase like "due to the fact that" has a
+shorter equivalent that a person wrote next to it once and that holds wherever the phrase appears.
+Nothing is derived, so nothing can be invented. Pointed at fitkit and at this crate it made
+fifteen edits and every one was right.
+
+Getting there took four corrections, and each was the same mistake. "rather" is a qualifier that
+empties whatever it sits on, but "rather than" is a comparison and cutting the "rather" out of it
+leaves a sentence missing a word. Now a qualifier has to have something a qualifier can attach to
+before it is one, which protects every fixed pairing built on a qualifier and not just that one.
+"there is" delays a subject, and the words to put in its place depend on a subject the opening
+never named, so it was proposing "no allocation here" as a sentence. Now the rewrite is an
+`Option`, `None` says a finding has no rewrite behind it, and a pass that writes files cannot
+reach one. A worn noun is the same case: "rich tapestry" is worth reporting and what belongs there
+instead is the writer's to choose. And "in relation to" is usually "about", except after a verb
+that selected the preposition, where "stands in relation to" becomes "stands about"; where the
+right wording depends on the verb, the entry states none.
+
+The rule underneath all four: what a rewriting pass may write is exactly what somebody wrote down
+for it, and the type says so. Every swap is also carried out and read back with both readers that
+judged the original, so a swap that leaves more wrong than it found is never offered.
+
+## It could not place the words it uses to talk about words
+
+A crate about English writes about letters, and writing about a letter means naming it. Escaping
+the quotes around a name is how a doc comment does that, and the escape was being dropped along
+with emphasis and headings, on the grounds that a backslash is how a medium spells itself. What
+that left was the letter standing bare in the sentence, so "y" was read as an English word and
+reported as one nobody could place. An escaped mark is one delimiter written in two characters and
+is now read as one, starting at the backslash, so what comes back out is the source text.
+
+Placing it was still not enough. A quoted term was being held against the lexicon, which is asking
+whether English lists a thing the writer has just named. It never will. A named term is placed as
+a name and no longer counted against the reading, and with that the crate can place every word in
+its own prose for the first time: nought, down from one, held now by equality rather than a bound.
+
+## A determiner left with nothing to introduce
+
+"Answers no to walk" was charged for a determiner with no noun after it, and "what follows the
+gerund is its object" was charged for disagreement, because "what" was only ever a subordinator.
+Both are the same thing: a word that usually introduces a noun phrase standing in for one. English
+lets most determiners do this and the crate already had somewhere to say so, since "all", "some"
+and "most" were listed as pronouns; the list was missing "no", "each", "either", "neither",
+"this", "that", "these" and "those", and the plain "what" behind "whatever".
+
+"which" and "who" are deliberately not there. They do the same job in a question, but a sentence
+of prose that opens with "which" is nearly always a relative clause left standing on its own, and
+reading it as a sentence stopped a padded comment from being cut down to its point. The reading
+that costs more than it returns is not taken.
+
+## It read a word it was talking about as a word it was using
+
+A crate that writes about wording quotes the wording it is writing about, and the plain pass
+proposed cutting "rather" out of the sentence explaining that "rather" is a qualifier. The name of
+a word is not a use of it. A named term is now given a key no phrase and no qualifier can match,
+so wording is judged on the words a sentence uses and not on the ones it names.

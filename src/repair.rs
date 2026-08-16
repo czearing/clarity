@@ -131,11 +131,10 @@ pub fn apply(sentence: &Sentence, edits: &[Edit]) -> Sentence {
 /// lists both members of the pair, and one that it does not know is out of reach, which the
 /// caller reports as a refusal to repair rather than a guess.
 ///
-/// Every candidate is put back to the lexicon before it is offered. Inflection is a way of
-/// proposing a word, not a way of making one: applied to a full stop it proposes ".es" and applied
-/// to a numeral it proposes "2es", and a repair that writes either has done more damage than the
-/// fault it was called to mend. Asking the lexicon is also what keeps a real word from being
-/// invented, since "specifics" and "pers" are exactly as derivable as they are wrong here.
+/// Inflection is a way of proposing a word, not a way of making one: applied to a full stop it
+/// proposes ".es" and applied to a numeral it proposes "2es", and a repair that writes either has
+/// done more damage than the fault it was called to mend. Three things bound it, and each answers
+/// a different way of inventing a word.
 fn forms(word: &str) -> Vec<String> {
     let lower = word.to_lowercase();
     if !lower.chars().all(char::is_alphabetic) {
@@ -155,24 +154,78 @@ fn forms(word: &str) -> Vec<String> {
     // each is a real entry in the lexicon, so asking whether the result is a word does not catch
     // any of them. What catches them is that English does not make new determiners or pronouns.
     if !crate::lexicon::is_closed(&lower) {
-        if let Some(stem) = lower.strip_suffix("es") {
-            out.push(stem.to_string());
-        }
-        if let Some(stem) = lower.strip_suffix('s') {
-            out.push(stem.to_string());
-        } else {
-            out.push(format!("{lower}s"));
-            out.push(format!("{lower}es"));
+        match plain(&lower) {
+            Some(stem) => out.push(stem),
+            None => out.extend(marked(&lower)),
         }
         if let Some(stem) = lower.strip_suffix("ed") {
             out.push(stem.to_string());
-            out.push(format!("{stem}s"));
+            out.extend(marked(stem));
         }
     }
-    out.retain(|form| *form != lower && !form.is_empty() && crate::lexicon::knows(form));
+    // What the lexicon lists, it has an opinion about, and a rule may not overrule it. "written"
+    // is listed as a participle and "be" as a plain verb, so deriving "writtens" and "bes" is a
+    // rule contradicting the entry it was applied to. Where the lexicon is silent the rule is all
+    // there is and is trusted, which is how "file" still reaches "files".
+    let listed = crate::lexicon::places(&lower);
+    out.retain(|form| {
+        *form != lower
+            && !form.is_empty()
+            && if listed {
+                crate::lexicon::places(form)
+            } else {
+                crate::lexicon::knows(form)
+            }
+    });
     out.dedup();
     out
 }
+
+/// The word with the plural inflection on it, spelled the way English spells it.
+///
+/// One spelling, not every spelling. Offering both "{word}s" and "{word}es" and letting the
+/// lexicon choose asks a question the lexicon cannot answer, because it places a word by its shape
+/// and "categorys" has the shape of a plural. English decides this by the end of the stem and
+/// leaves no choice. A sibilant takes \"es\". A consonant before a final \"y\" turns it into
+/// \"ies\", and every other stem adds \"s\".
+fn marked(word: &str) -> Option<String> {
+    if word.is_empty() {
+        return None;
+    }
+    if word.ends_with(['s', 'x', 'z']) || word.ends_with("ch") || word.ends_with("sh") {
+        return Some(format!("{word}es"));
+    }
+    let mut letters = word.chars().rev();
+    let last = letters.next()?;
+    let before = letters.next();
+    if last == 'y' && before.is_some_and(|before| !VOWELS.contains(before)) {
+        return Some(format!("{}ies", &word[..word.len() - 1]));
+    }
+    if last == 'o' && before.is_some_and(|before| !VOWELS.contains(before)) {
+        return Some(format!("{word}es"));
+    }
+    Some(format!("{word}s"))
+}
+
+/// The word with the plural inflection taken off, if that inflection is what put it there.
+///
+/// The same rule read backwards, and checked by running it forwards again. Stripping "es" from
+/// "address" gives "addres", and only spelling the answer back out catches it: "addres" marked is
+/// "addreses", which is not the word we started with, so the strip was never an inflection.
+fn plain(word: &str) -> Option<String> {
+    let stems = [
+        word.strip_suffix("ies").map(|stem| format!("{stem}y")),
+        word.strip_suffix("es").map(str::to_owned),
+        word.strip_suffix('s').map(str::to_owned),
+    ];
+    stems
+        .into_iter()
+        .flatten()
+        .find(|stem| marked(stem).as_deref() == Some(word))
+}
+
+/// The letters that make a preceding consonant matter to how a word is spelled.
+const VOWELS: &str = "aeiou";
 
 /// Words whose counterpart no rule derives.
 const PAIRS: &[(&str, &str)] = &[

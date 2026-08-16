@@ -63,74 +63,96 @@ pub struct Note {
     pub at: Span,
     /// What is wrong.
     pub flaw: Flaw,
-    /// The shorter wording, or nothing when the phrase should simply go.
-    pub instead: &'static str,
+    /// What to write instead: `Some` states it, and `Some("")` means the words go.
+    ///
+    /// `None` is a finding with no rewrite behind it. Some wording is wrong in a way that only
+    /// the writer can settle: an opening that holds the subject back has to be rebuilt around
+    /// whatever the subject turns out to be, and a worn noun has to be replaced by the thing it
+    /// was standing in for. Saying so in the type is what keeps a rewriting pass from guessing,
+    /// because there is nothing there for it to write.
+    pub instead: Option<&'static str>,
 }
 
 /// Phrases with a shorter equivalent. Longest first, so the longest match wins.
-const PHRASES: &[(&str, &str, Flaw)] = &[
-    ("in the not too distant future", "soon", Flaw::Roundabout),
-    ("in today s fast paced world", "", Flaw::Worn),
-    ("it is important to note that", "", Flaw::Worn),
-    ("it should be noted that", "", Flaw::Worn),
-    ("for all intents and purposes", "", Flaw::Worn),
-    ("at the end of the day", "", Flaw::Worn),
-    ("in the event that", "if", Flaw::Roundabout),
-    ("due to the fact that", "because", Flaw::Roundabout),
-    ("owing to the fact that", "because", Flaw::Roundabout),
-    ("in spite of the fact that", "although", Flaw::Roundabout),
-    ("despite the fact that", "although", Flaw::Roundabout),
-    ("for the purpose of", "to", Flaw::Roundabout),
-    ("with regard to", "about", Flaw::Roundabout),
-    ("in relation to", "about", Flaw::Roundabout),
-    ("in the process of", "", Flaw::Roundabout),
-    ("a large number of", "many", Flaw::Roundabout),
-    ("a majority of", "most", Flaw::Roundabout),
-    ("in order to", "to", Flaw::Roundabout),
-    ("at this point in time", "now", Flaw::Roundabout),
-    ("in the near future", "soon", Flaw::Roundabout),
-    ("prior to", "before", Flaw::Roundabout),
-    ("subsequent to", "after", Flaw::Roundabout),
-    ("in the absence of", "without", Flaw::Roundabout),
-    ("has the ability to", "can", Flaw::Roundabout),
-    ("is able to", "can", Flaw::Roundabout),
-    ("make a decision", "decide", Flaw::Buried),
-    ("reach a conclusion", "conclude", Flaw::Buried),
-    ("give consideration to", "consider", Flaw::Buried),
-    ("provide an explanation", "explain", Flaw::Buried),
-    ("carry out an analysis", "analyse", Flaw::Buried),
-    ("take into consideration", "consider", Flaw::Buried),
-    ("place an emphasis on", "emphasise", Flaw::Buried),
-    ("conduct an investigation", "investigate", Flaw::Buried),
-    ("each and every", "every", Flaw::Redundant),
-    ("first and foremost", "first", Flaw::Redundant),
-    ("absolutely essential", "essential", Flaw::Redundant),
-    ("completely eliminate", "eliminate", Flaw::Redundant),
-    ("advance planning", "planning", Flaw::Redundant),
-    ("past history", "history", Flaw::Redundant),
-    ("end result", "result", Flaw::Redundant),
-    ("final outcome", "outcome", Flaw::Redundant),
-    ("basic fundamentals", "fundamentals", Flaw::Redundant),
-    ("close proximity", "proximity", Flaw::Redundant),
-    ("free gift", "gift", Flaw::Redundant),
-    ("added bonus", "bonus", Flaw::Redundant),
-    ("unexpected surprise", "surprise", Flaw::Redundant),
-    ("new innovation", "innovation", Flaw::Redundant),
-    ("various different", "various", Flaw::Redundant),
-    ("rich tapestry", "", Flaw::Worn),
-    ("game changer", "", Flaw::Worn),
-    ("deep dive", "", Flaw::Worn),
-    ("seamlessly integrate", "", Flaw::Worn),
-    ("robust framework", "", Flaw::Worn),
-    ("leverage", "use", Flaw::Worn),
-    ("utilise", "use", Flaw::Worn),
-    ("utilize", "use", Flaw::Worn),
-    ("delve", "", Flaw::Worn),
-    ("myriad", "many", Flaw::Worn),
-    ("plethora", "many", Flaw::Worn),
-    ("paradigm", "", Flaw::Worn),
-    ("synergy", "", Flaw::Worn),
-    ("holistic", "", Flaw::Worn),
+const PHRASES: &[(&str, Option<&str>, Flaw)] = &[
+    (
+        "in the not too distant future",
+        Some("soon"),
+        Flaw::Roundabout,
+    ),
+    ("in today s fast paced world", Some(""), Flaw::Worn),
+    ("it is important to note that", Some(""), Flaw::Worn),
+    ("it should be noted that", Some(""), Flaw::Worn),
+    ("for all intents and purposes", Some(""), Flaw::Worn),
+    ("at the end of the day", Some(""), Flaw::Worn),
+    ("in the event that", Some("if"), Flaw::Roundabout),
+    ("due to the fact that", Some("because"), Flaw::Roundabout),
+    ("owing to the fact that", Some("because"), Flaw::Roundabout),
+    (
+        "in spite of the fact that",
+        Some("although"),
+        Flaw::Roundabout,
+    ),
+    ("despite the fact that", Some("although"), Flaw::Roundabout),
+    // A verb can select the preposition these open with, as "stands in relation to" does, and
+    // then the phrase is the verb's complement rather than a connective standing on its own. What
+    // to put in its place depends on the verb, so the finding is reported and the wording is left
+    // to the writer.
+    ("for the purpose of", None, Flaw::Roundabout),
+    ("with regard to", None, Flaw::Roundabout),
+    ("in relation to", None, Flaw::Roundabout),
+    ("in the process of", Some(""), Flaw::Roundabout),
+    ("a large number of", Some("many"), Flaw::Roundabout),
+    ("a majority of", Some("most"), Flaw::Roundabout),
+    ("in order to", Some("to"), Flaw::Roundabout),
+    ("at this point in time", Some("now"), Flaw::Roundabout),
+    ("in the near future", Some("soon"), Flaw::Roundabout),
+    ("prior to", Some("before"), Flaw::Roundabout),
+    ("subsequent to", Some("after"), Flaw::Roundabout),
+    ("in the absence of", Some("without"), Flaw::Roundabout),
+    ("has the ability to", Some("can"), Flaw::Roundabout),
+    ("is able to", Some("can"), Flaw::Roundabout),
+    ("make a decision", Some("decide"), Flaw::Buried),
+    ("reach a conclusion", Some("conclude"), Flaw::Buried),
+    ("give consideration to", Some("consider"), Flaw::Buried),
+    ("provide an explanation", Some("explain"), Flaw::Buried),
+    ("carry out an analysis", Some("analyse"), Flaw::Buried),
+    ("take into consideration", Some("consider"), Flaw::Buried),
+    ("place an emphasis on", Some("emphasise"), Flaw::Buried),
+    (
+        "conduct an investigation",
+        Some("investigate"),
+        Flaw::Buried,
+    ),
+    ("each and every", Some("every"), Flaw::Redundant),
+    ("first and foremost", Some("first"), Flaw::Redundant),
+    ("absolutely essential", Some("essential"), Flaw::Redundant),
+    ("completely eliminate", Some("eliminate"), Flaw::Redundant),
+    ("advance planning", Some("planning"), Flaw::Redundant),
+    ("past history", Some("history"), Flaw::Redundant),
+    ("end result", Some("result"), Flaw::Redundant),
+    ("final outcome", Some("outcome"), Flaw::Redundant),
+    ("basic fundamentals", Some("fundamentals"), Flaw::Redundant),
+    ("close proximity", Some("proximity"), Flaw::Redundant),
+    ("free gift", Some("gift"), Flaw::Redundant),
+    ("added bonus", Some("bonus"), Flaw::Redundant),
+    ("unexpected surprise", Some("surprise"), Flaw::Redundant),
+    ("new innovation", Some("innovation"), Flaw::Redundant),
+    ("various different", Some("various"), Flaw::Redundant),
+    ("rich tapestry", None, Flaw::Worn),
+    ("game changer", None, Flaw::Worn),
+    ("deep dive", None, Flaw::Worn),
+    ("seamlessly integrate", None, Flaw::Worn),
+    ("robust framework", None, Flaw::Worn),
+    ("leverage", Some("use"), Flaw::Worn),
+    ("utilise", Some("use"), Flaw::Worn),
+    ("utilize", Some("use"), Flaw::Worn),
+    ("delve", None, Flaw::Worn),
+    ("myriad", Some("many"), Flaw::Worn),
+    ("plethora", Some("many"), Flaw::Worn),
+    ("paradigm", None, Flaw::Worn),
+    ("synergy", None, Flaw::Worn),
+    ("holistic", None, Flaw::Worn),
 ];
 
 /// Qualifiers that change nothing they attach to.
@@ -151,15 +173,41 @@ pub fn is_empty(word: &str) -> bool {
     FILLERS.contains(&word)
 }
 
+/// Whether the qualifier at `at` is being used as one.
+///
+/// A qualifier qualifies something, and only a verb, an adjective or another adverb can be
+/// qualified. Where the next word cannot take a qualifier, the word is doing some other job and
+/// removing it would break the sentence: "rather" in "rather than" opens a comparison, and what
+/// is left after cutting it is not a shorter sentence but a broken one.
+///
+/// Nothing is listed. The test is what the following word can be, so any fixed pairing built on a
+/// qualifier is protected by the same reading.
+fn qualifies(tags: &[Tag], at: usize) -> bool {
+    matches!(
+        tags.get(at + 1),
+        Some(Tag::Verb(_) | Tag::Adjective | Tag::Adverb | Tag::Modal)
+    )
+}
+
 /// What is wrong with the wording of `sentence`.
 ///
 /// A listed phrase claims its words, so nothing inside one is reported twice.
 #[must_use]
 pub fn read(sentence: &Sentence, tags: &[Tag]) -> Vec<Note> {
+    // A named term is not the word it names. This crate writes "rather" is a qualifier, and
+    // reading that as a use of the word had the plain pass proposing to delete it from the
+    // sentence explaining it. A mention is given a key no phrase and no qualifier can match, so
+    // wording is judged on the words the sentence uses and not on the ones it talks about.
     let keys: Vec<&str> = sentence
         .tokens
         .iter()
-        .map(|token| token.key.as_str())
+        .map(|token| {
+            if token.mention {
+                ""
+            } else {
+                token.key.as_str()
+            }
+        })
         .collect();
     let mut notes = Vec::new();
     let mut at = 0;
@@ -169,11 +217,11 @@ pub fn read(sentence: &Sentence, tags: &[Tag]) -> Vec<Note> {
             notes.push(note);
             continue;
         }
-        if FILLERS.contains(&keys[at]) {
+        if FILLERS.contains(&keys[at]) && qualifies(tags, at) {
             notes.push(Note {
                 at: Span::new(at, at + 1),
                 flaw: Flaw::Filler,
-                instead: "",
+                instead: Some(""),
             });
         }
         at += 1;
@@ -199,7 +247,7 @@ fn phrase_at(keys: &[&str], at: usize) -> Option<Note> {
         Some(Note {
             at: Span::new(at, end),
             flaw: *flaw,
-            instead,
+            instead: *instead,
         })
     })
 }
@@ -224,7 +272,7 @@ fn delayed(keys: &[&str]) -> Vec<Note> {
         .map(|(at, _)| Note {
             at: Span::new(at, at + 2),
             flaw: Flaw::Delayed,
-            instead: "",
+            instead: None,
         })
         .collect()
 }
@@ -258,7 +306,7 @@ fn echoes(keys: &[&str], tags: &[Tag]) -> Vec<Note> {
             notes.push(Note {
                 at: Span::new(index, index + 1),
                 flaw: Flaw::Echo,
-                instead: "",
+                instead: None,
             });
         }
     }
@@ -302,7 +350,25 @@ mod tests {
         let sentence = Sentence::read("due to the fact that it rained");
         let notes = read(&sentence, &check(&sentence).tags);
         assert_eq!(notes[0].flaw, Flaw::Roundabout);
-        assert_eq!(notes[0].instead, "because");
+        assert_eq!(notes[0].instead, Some("because"));
+    }
+
+    #[test]
+    fn a_qualifier_with_nothing_to_qualify_is_left_alone() {
+        // "rather" empties an adjective it sits on, but in "rather than" it opens a comparison,
+        // and cutting it leaves a sentence that has lost a word it needed.
+        assert_eq!(flaws("spans are counted rather than summed"), []);
+        assert_eq!(flaws("the parser is rather slow"), [Flaw::Filler]);
+    }
+
+    #[test]
+    fn an_opening_that_holds_the_subject_back_offers_no_rewrite() {
+        // What is wrong is reportable. What to do about it is not, because the sentence has to be
+        // rebuilt around a subject the opening never named.
+        let sentence = Sentence::read("there is no allocation here");
+        let notes = read(&sentence, &check(&sentence).tags);
+        assert_eq!(notes[0].flaw, Flaw::Delayed);
+        assert_eq!(notes[0].instead, None);
     }
 
     #[test]

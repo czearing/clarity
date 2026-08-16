@@ -227,7 +227,7 @@ pub fn clauses(tags: &[Tag]) -> Vec<(usize, usize)> {
                 }
                 modifying = false;
             }
-            Tag::Mark(_) | Tag::Coordinator => {
+            Tag::Mark(_) | Tag::Coordinator(_) => {
                 head = None;
                 modifying = false;
                 settled = false;
@@ -277,9 +277,13 @@ impl Sentence {
     pub fn text(&self) -> String {
         let mut text = String::new();
         for token in &self.tokens {
-            let joined = token.key.starts_with('\'')
-                || token.key == "n't"
-                || matches!(token.key.as_str(), "." | "," | "!" | "?" | ";" | ":");
+            // A clitic joins the word before it, a mark joins the word before it, and a named
+            // term joins nothing: "n't" written as a term is two inches of quoted text and needs
+            // its space, however the same letters behave when they are an ending.
+            let joined = !token.mention
+                && (token.key.starts_with('\'')
+                    || token.key == "n't"
+                    || matches!(token.key.as_str(), "." | "," | "!" | "?" | ";" | ":"));
             if !text.is_empty() && !joined {
                 text.push(' ');
             }
@@ -341,7 +345,7 @@ pub struct Grammar {
 
 /// A tag together with what the clause around it has seen.
 ///
-/// This is what the search actually chooses. Reading it as a tag alone was the mistake that made
+/// This is what the search chooses. Reading it as a tag alone was the mistake that made
 /// agreement, predicates, and doubled tense into things that had to be looked for afterwards.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct State {
@@ -372,6 +376,16 @@ impl Model for Grammar {
     fn render(&self, input: &Sentence, _params: &State) -> Sentence {
         input.clone()
     }
+}
+
+/// Whether a subordinator has already opened a clause among these tokens.
+///
+/// What is asked is the lexicon's own answer, not a list of words, so a subordinator it learns
+/// later licenses the mood without anything here changing.
+fn subordinated(before: &[Token]) -> bool {
+    before.iter().any(|token| {
+        matches!(ask(&Lexicon, token), Ok(Reported::Known(tags)) if tags.contains(&Tag::Subordinator))
+    })
 }
 
 impl Fit for Grammar {
@@ -406,6 +420,22 @@ impl Fit for Grammar {
                         if tags.contains(&Tag::Verb(Form::Base)) {
                             allowed = Reported::Known(vec![Tag::Verb(Form::Base)]);
                         }
+                    }
+                }
+                // The past subjunctive is spelled like the past plural and demands no number of
+                // its subject: "as though it were" is not a disagreement but the one mood English
+                // still inflects for. Only "be" distinguishes number in the preterite, so the form
+                // that can carry the subjunctive is exactly the one the lexicon reports as plural
+                // and no word has to be named here. It is offered only inside a clause a
+                // subordinator opened, because that is what licenses the mood, and it is offered
+                // last, so the plain plural reading is still what "the dogs were fast" gets.
+                if let Reported::Known(tags) = &allowed {
+                    if tags.contains(&Tag::Verb(Form::PastPlural))
+                        && subordinated(&reference.tokens[..index])
+                    {
+                        let mut widened = tags.clone();
+                        widened.push(Tag::Verb(Form::Past));
+                        allowed = Reported::Known(widened);
                     }
                 }
                 if token.key == "to" && index > 0 && takes_infinitive(&reference.tokens[index - 1])
@@ -644,7 +674,7 @@ pub fn stranded(frame: Frame, tag: Tag) -> bool {
 
 /// Whether a tag can close a clause whose verb was left out, as in "if any word can".
 fn ends_a_clause(tag: Tag) -> bool {
-    matches!(tag, Tag::Mark(_) | Tag::Coordinator | Tag::Subordinator)
+    matches!(tag, Tag::Mark(_) | Tag::Coordinator(_) | Tag::Subordinator)
 }
 fn leads_to_verb(tag: Tag) -> bool {
     matches!(tag, Tag::Verb(Form::Base) | Tag::Adverb)

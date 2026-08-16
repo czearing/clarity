@@ -2,7 +2,7 @@
 //!
 //! A file is not prose. It is prose with code around it, and the code is not English and must not
 //! be judged as though it were. What is left after the code is taken out is what a reader of the
-//! documentation actually reads, which is the only thing worth holding to a standard.
+//! documentation reads, which is the only thing worth holding to a standard.
 
 /// Prose from doc comments, skipping fenced code and hidden doctest lines.
 #[must_use]

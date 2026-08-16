@@ -33,7 +33,7 @@ pub struct Clarity {
     pub strains: Vec<Strain>,
     /// Total integration cost.
     pub cost: usize,
-    /// The longest single dependency, which is what a reader actually notices.
+    /// The longest single dependency, which is what a reader notices.
     pub worst: usize,
 }
 

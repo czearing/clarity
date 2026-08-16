@@ -50,6 +50,20 @@ pub enum Form {
     Gerund,
 }
 
+/// What a coordinator does to the things it joins.
+///
+/// Two subjects added together are plural however singular each was, and two offered as
+/// alternatives are not: "a path or an identifier is one name" is about one of them at a time. The
+/// difference decides agreement, so it belongs to the tag rather than to a rule that reads the
+/// word again later.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Join {
+    /// Adds what it joins, as "and" does.
+    Sum,
+    /// Offers a choice between what it joins, as "or" and "but" do.
+    Choice,
+}
+
 /// A word category, carrying the features agreement needs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Tag {
@@ -71,8 +85,8 @@ pub enum Tag {
     Adjective,
     /// Adverb.
     Adverb,
-    /// Coordinator, such as "and".
-    Coordinator,
+    /// Coordinator, such as "and", carrying whether it adds or offers a choice.
+    Coordinator(Join),
     /// Subordinator, such as "because".
     Subordinator,
     /// Infinitival "to".
@@ -109,7 +123,8 @@ impl Tag {
             Self::Preposition,
             Self::Adjective,
             Self::Adverb,
-            Self::Coordinator,
+            Self::Coordinator(Join::Sum),
+            Self::Coordinator(Join::Choice),
             Self::Subordinator,
             Self::To,
             Self::Numeral,

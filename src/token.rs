@@ -56,16 +56,27 @@ pub fn tokenise(text: &str) -> Vec<Token> {
             }
             _ => {}
         }
-        // Emphasis, escapes and headings are how a medium is written down, not how English is.
-        // A reader sees the word inside them and no mark at all, so nothing is emitted for them.
+        // Emphasis and headings are how a medium is written down, not how English is. A reader
+        // sees the word inside them and no mark at all, so nothing is emitted for them.
+        //
+        // An escaped mark is not one of those. The backslash is the medium's spelling of the
+        // mark, but the mark is the writer's, and a doc comment names a term by escaping the
+        // quotes around it. Dropping the mark leaves the term bare, which is how "y" came to be
+        // read as an English word and reported as one that could not be placed. An opener that
+        // never closes is handled where quotations are folded, which leaves its words where they
+        // were rather than swallowing the sentence.
         if !part_of_word && !character.is_whitespace() && !FORMATTING.contains(character) {
-            push(&mut tokens, text, at, at + character.len_utf8());
+            // An escaped mark is one delimiter spelled in two characters, so the token starts at
+            // the backslash. Starting it at the mark leaves the backslash loose between the two
+            // halves of a name, and a name that quotes its own escape is not the source text.
+            let from = at - usize::from(text[..at].ends_with('\\'));
+            push(&mut tokens, text, from, at + character.len_utf8());
         }
     }
     if let Some(from) = start {
         push(&mut tokens, text, from, text.len());
     }
-    fold_mentions(tokens)
+    fold_mentions(tokens, text)
 }
 
 /// Where the names are in `text`.
@@ -137,23 +148,28 @@ const QUOTES: &[&str] = &["\"", "`", "\u{201c}", "\u{201d}"];
 /// A named term is a noun whatever it contains. Without this, "a determiner and its noun must
 /// share number, as in \"a dog\" but not \"a dogs\"" is read as though the writer had written
 /// "a dogs", and the sentence is blamed for the mistake it is describing.
-fn fold_mentions(tokens: Vec<Token>) -> Vec<Token> {
-    let opener = |token: &Token| QUOTES.contains(&token.word.as_str());
+fn fold_mentions(tokens: Vec<Token>, text: &str) -> Vec<Token> {
+    let opener = |token: &Token| QUOTES.contains(&token.word.trim_start_matches('\\'));
     let mut folded: Vec<Token> = Vec::with_capacity(tokens.len());
-    let mut inside: Option<usize> = None;
+    let mut inside: Option<(usize, usize)> = None;
     for token in tokens {
         match inside {
-            Some(from) if opener(&token) => {
+            Some((from, quote)) if opener(&token) => {
                 let end = token.at.end;
                 let held: Vec<Token> = folded.drain(from..).collect();
-                let word: String = held
+                let inner: String = held
                     .iter()
                     .map(|held| held.word.as_str())
                     .collect::<Vec<_>>()
                     .join(" ");
-                let at = Span::new(held.first().map_or(end, |first| first.at.start), end);
+                // The name is quoted as it was written, marks and spacing and all, rather than
+                // rebuilt out of the words inside it. Rebuilding is where the quotes went missing
+                // and where "{word}s" came back as "{ word } s": a token that cannot be written
+                // back out unchanged cannot be part of anything that rewrites a file.
+                let at = Span::new(quote, end);
+                let word = text[quote..end].to_owned();
                 folded.push(Token {
-                    key: word.to_lowercase(),
+                    key: inner.to_lowercase(),
                     word,
                     at,
                     // A quoted or backticked name is spelled the way the thing is spelled. An
@@ -165,8 +181,8 @@ fn fold_mentions(tokens: Vec<Token>) -> Vec<Token> {
                 });
                 inside = None;
             }
-            None if opener(&token) => inside = Some(folded.len()),
-            Some(_) | None => folded.push(token),
+            None if opener(&token) => inside = Some((folded.len(), token.at.start)),
+            Some(..) | None => folded.push(token),
         }
     }
     folded
