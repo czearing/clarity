@@ -34,6 +34,7 @@ sentence was designed to provoke.
 | Trims | Redundancy, roundabout connectives, buried verbs, filler, worn phrases, echoes |
 | Infers | Works out what a passage holds itself to before holding it to anything |
 | Refuses | Says a word is unknown rather than judging a sentence it cannot read |
+| Documents | Writes a doc comment from what a signature and a body prove, and reads it back before writing it |
 
 ## Register
 
@@ -147,3 +148,29 @@ Read `docs/` for the rules and their sources, and for what the engine deliberate
 ## Licence
 
 MIT or Apache-2.0.
+
+## Documenting a repository
+
+```text
+document src/**/*.rs            # report what it would write
+document --write src/**/*.rs    # write it
+document --names src/**/*.rs    # names whose number disagrees with their type
+```
+
+The pass reads each file with `syn` and gathers what the code proves: whether a call answers with
+nothing, whether it can fail, whether it changes what it is used on, what it is handed, how many
+of a thing its type holds. Each finding carries a price for how sure it is, and a line is written
+only when its price plus its length beats saying nothing.
+
+Nothing about any repository is written into it. There are no phrasings to fill in and no verbs
+listed anywhere. A name is split into words, the signature says whether the call does something or
+names something, and English settles the rest.
+
+Two things bound how wrong it can be. Every sentence it writes is read back by the engine itself
+and thrown away if the engine faults it, so a rule added to the grammar tightens what may be
+written with nothing changing in the generator. And the only edit it can express is inserting
+`///` lines, so touching code is not something it declines to do but something it cannot say.
+
+On a repository of 841 files it read 4541 items in 4.4 seconds and wrote 1767 doc comment lines
+across 274 files. `git diff` reported 1767 lines added and none deleted, every one a doc comment,
+and the repository still built. The lines it wrote read back with no faults and no unknown words.

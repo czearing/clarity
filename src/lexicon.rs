@@ -758,6 +758,19 @@ pub fn offers(key: &str, tag: Tag) -> bool {
     listed(key).is_some_and(|found| found.contains(&tag)) || inflected(key, false).contains(&tag)
 }
 
+/// The reading the lexicon thinks likeliest for `key`.
+///
+/// Every reading a word can hold is offered, most likely first, because the sentence around it is
+/// what settles which one it has. Where there is no sentence, as in a name, the ranking is all
+/// there is, and asking for the first is asking what the word usually is. "aqueous" can be a plain
+/// verb by shape alone, and only the ranking says it is an adjective.
+#[must_use]
+pub fn likeliest(key: &str) -> Option<Tag> {
+    listed(key)
+        .and_then(|found| found.first().copied())
+        .or_else(|| inflected(key, false).first().copied())
+}
+
 /// Whether a word belongs to a closed class, so it frames a point rather than carrying one.
 ///
 /// Read off the readings the lexicon offers rather than from a separate list, so the two can never

@@ -406,3 +406,66 @@ identifiers. Condense should not be allowed to write at all.
 Ninety thousand words of ordinary prose, six thousand sentences: twenty six seconds to read, thirty
 nine to read and find repairs, forty five to read and find cuts. The unseen repository takes eleven
 seconds for the same work, because a source file is mostly code.
+
+## Writing doc comments from the code
+
+The `document` pass reads a Rust file with `syn`, gathers what the code proves about each public
+item, and writes a doc comment for the items that have none. It never reads the code's meaning.
+It reads the signature and the shape of the body. Every finding carries a price that says how sure
+it is. A signature states its facts outright and they are cheap. A fact that holds on every path
+through a body costs more. A fact that holds on only some paths costs most. A line is written when
+its price plus its length comes in under what saying nothing costs.
+
+Nothing about the code is written into the engine. There is no table of phrasings and no list of
+verbs. A name is split into its words, the signature says whether the call does something or
+names something, and English decides the rest.
+
+Two things bound what it can say wrong.
+
+The grammar is the first of them. Every sentence this pass writes goes back through the same engine
+that reads the repository, and the engine throws away any sentence it faults. Adding a rule to
+the grammar therefore tightens what may be generated without a line changing here. On book-cook-ai
+the 1767 lines it wrote read back with 0 faults and 0 unknown words.
+
+The edit is the second of them. This pass can express one edit and no other, which is to insert a run
+of `///` lines at the start of a line. Touching code is not something it declines to do. Touching
+code is something it has no way to say.
+Run against book-cook-ai's 841 files it wrote 1767 lines across 274 files, and `git diff` reported
+1767 added and 0 deleted, every added line a doc comment. The repository still built.
+
+## What the pass decides from the signature rather than the word
+
+English lets almost any short word be a plain verb, so the word cannot say whether a name
+describes an act or a thing. `stability(&self) -> f64` is read as a thing because the signature
+gives an answer back and takes nothing, which is why it reads "The stability." and not
+"Stabilities."
+
+Which word carries the act is a separate question, and the ending cannot answer it either. Every
+word ending in "s" is offered a third person reading by its shape, which is how a name beginning
+"aqueous" once wrote "Aqueous the sucrose dielectric loss factor". A third person reading is
+taken only when the word left after the ending is itself a verb, which "hold" is and "aqueou" is
+not.
+
+## What a name's number can and cannot be judged against
+
+The `--names` pass reports a name whose number disagrees with its type: `assay: &[&str; 7]` is
+written for one thing and holds seven, and `remained_liquid_at_lowest_temperatures: bool` is
+written for many and holds one.
+
+Two kinds of name were dropped from this after their findings were read by hand.
+
+A number type is not asked about at all. A number can count many things or measure many units, so
+`water_determinations: u8` and `duration_minutes` in a float are both good English over one
+number.
+
+A word the lexicon offers in both numbers is not asked about either, because English spells it
+the same either way and `species: Vec<_>` is right as it stands.
+
+Of a sample of twenty findings read by hand after both changes, nineteen were real. On
+book-cook-ai the pass reports 748 across 4541 items.
+
+## Speed of the doc pass
+
+4541 items across 841 files in 4.4 seconds, including generating and reading back 1646 comments.
+The grammar is the slow part of this repository and the doc pass only reads the short sentences
+it writes, so it costs far less than a pass over prose.

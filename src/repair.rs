@@ -280,6 +280,29 @@ fn forms(word: &str, wants_base: bool) -> Vec<String> {
     out
 }
 
+/// The verb with its third person singular ending on it.
+///
+/// English spells a plural noun and a third person singular verb the same way, so this is the
+/// same spelling rule read for the other part of speech rather than a second rule to keep.
+#[must_use]
+pub fn third(word: &str) -> Option<String> {
+    marked(&word.to_lowercase())
+}
+
+/// Whether a word is written as a plural, judged by the spelling English would have used.
+///
+/// A name in code is a noun phrase and the head of a noun phrase is its last word, so this is
+/// what tells "ids" from "id" without either being listed anywhere. Spelling the singular back
+/// out is what makes it an inflection rather than a coincidence: "addres" marked is "addreses",
+/// which is not "address". A word the lexicon already reads as a singular is not a plural
+/// however it is spelled, which is what keeps "status" and "citrus" out.
+#[must_use]
+pub fn is_plural(word: &str) -> bool {
+    let lower = word.to_lowercase();
+    plain(&lower).is_some()
+        && !crate::lexicon::offers(&lower, Tag::Noun(crate::tag::Number::Singular))
+}
+
 /// The word with the past inflection taken off, where taking it off is not a guess.
 ///
 /// English doubles a final consonant before "ed" sometimes and not others, and nothing in the
@@ -328,7 +351,7 @@ fn marked(word: &str) -> Option<String> {
 /// The same rule read backwards, and checked by running it forwards again. Stripping "es" from
 /// "address" gives "addres", and only spelling the answer back out catches it: "addres" marked is
 /// "addreses", which is not the word we started with, so the strip was never an inflection.
-fn plain(word: &str) -> Option<String> {
+pub fn plain(word: &str) -> Option<String> {
     let stems = [
         word.strip_suffix("ies").map(|stem| format!("{stem}y")),
         word.strip_suffix("es").map(str::to_owned),
