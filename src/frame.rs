@@ -250,7 +250,7 @@ impl Frame {
             while at < found.len() {
                 let frame = found[at];
                 at += 1;
-                for tag in Tag::every() {
+                for &tag in Tag::every() {
                     let next = frame.after(tag);
                     if seen.insert(next) {
                         found.push(next);

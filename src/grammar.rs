@@ -4,6 +4,8 @@
 //! Every infinite transition names the rule that forbids it, so a rejection can always be
 //! explained rather than asserted. See [`why`].
 
+use std::sync::OnceLock;
+
 use fitkit::ask;
 use fitkit::core::{Confidence, Cost, Evidence, Reported, Scale, Span};
 use fitkit::fit::{Fit, Model, Segmented};
@@ -364,13 +366,21 @@ impl Model for Grammar {
     }
 
     fn candidates(&self) -> Vec<State> {
-        let mut found = Vec::new();
-        for &frame in Frame::every() {
-            for tag in Tag::every() {
-                found.push(State { tag, frame });
-            }
-        }
-        found
+        // A state is a frame and a tag, and which pairs exist is settled by the grammar rather
+        // than by the sentence. Walking them out again for every sentence would rebuild the same
+        // hundred thousand states each time, so they are walked once and handed out.
+        static EVERY: OnceLock<Vec<State>> = OnceLock::new();
+        EVERY
+            .get_or_init(|| {
+                let mut found = Vec::new();
+                for &frame in Frame::every() {
+                    for &tag in Tag::every() {
+                        found.push(State { tag, frame });
+                    }
+                }
+                found
+            })
+            .clone()
     }
 
     fn render(&self, input: &Sentence, _params: &State) -> Sentence {

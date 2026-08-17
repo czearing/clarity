@@ -923,10 +923,18 @@ fn inflected(key: &str, capitalised: bool) -> Vec<Tag> {
             tags.push(Tag::Verb(Form::Gerund));
         }
     }
+    let mut loose_past = false;
     if let Some(stem) = key.strip_suffix("ed") {
         if stem.len() >= 2 {
             tags.push(Tag::Verb(Form::Past));
             tags.push(Tag::Verb(Form::Participle));
+            // English adds "d" to a stem that already ends in "e" and "ed" to every other stem,
+            // so a word whose "ed" comes off to leave an "e" was never spelled by that rule:
+            // "ne" would give "ned", not "need". Those letters belong to the stem, so the word
+            // keeps its plain form as well and the sentence decides which reading it wants, as
+            // it does for "chorus" against a plural. Without this "must exceed" is charged for a
+            // modal with no plain form after it, and a repair sent to mend it offers "exce".
+            loose_past = stem.ends_with('e');
         }
     }
     if let Some(stem) = key.strip_suffix("ly") {
@@ -992,7 +1000,8 @@ fn inflected(key: &str, capitalised: bool) -> Vec<Tag> {
     // form. So a word an inflection has already placed is not offered the plain form as well.
     let inflected = tags
         .iter()
-        .any(|tag| matches!(tag, Tag::Verb(_) | Tag::Noun(Number::Plural)));
+        .any(|tag| matches!(tag, Tag::Verb(_) | Tag::Noun(Number::Plural)))
+        && !loose_past;
     if key.len() >= 2 && !inflected {
         tags.push(Tag::Noun(Number::Singular));
         tags.push(Tag::Verb(Form::Base));

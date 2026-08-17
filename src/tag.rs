@@ -1,5 +1,7 @@
 //! The categories a word can hold.
 
+use std::sync::OnceLock;
+
 /// Grammatical number.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Number {
@@ -116,39 +118,45 @@ impl Tag {
     /// The search costs the square of this, so it holds only combinations English has. Pronoun
     /// features come from the lexicon rather than the product of the feature sets, which would
     /// name a dozen pronouns that do not exist.
+    ///
+    /// Built once. The list is a fact about English, not about any sentence, and the search asks
+    /// for it often enough that rebuilding it would cost more than the decode it serves.
     #[must_use]
-    pub fn every() -> Vec<Self> {
-        let mut tags = vec![
-            Self::Modal,
-            Self::Preposition,
-            Self::Adjective,
-            Self::Adverb,
-            Self::Coordinator(Join::Sum),
-            Self::Coordinator(Join::Choice),
-            Self::Subordinator,
-            Self::To,
-            Self::Numeral,
-            Self::Mark(Break::Pause),
-            Self::Mark(Break::Stop),
-        ];
-        for number in [Number::Singular, Number::Plural] {
-            tags.push(Self::Determiner(number));
-            tags.push(Self::Noun(number));
-            tags.push(Self::Proper(number));
-        }
-        tags.extend(crate::lexicon::pronouns());
-        for form in [
-            Form::Base,
-            Form::ThirdSingular,
-            Form::Past,
-            Form::PastSingular,
-            Form::PastPlural,
-            Form::Participle,
-            Form::Gerund,
-        ] {
-            tags.push(Self::Verb(form));
-        }
-        tags
+    pub fn every() -> &'static [Self] {
+        static EVERY: OnceLock<Vec<Tag>> = OnceLock::new();
+        EVERY.get_or_init(|| {
+            let mut tags = vec![
+                Self::Modal,
+                Self::Preposition,
+                Self::Adjective,
+                Self::Adverb,
+                Self::Coordinator(Join::Sum),
+                Self::Coordinator(Join::Choice),
+                Self::Subordinator,
+                Self::To,
+                Self::Numeral,
+                Self::Mark(Break::Pause),
+                Self::Mark(Break::Stop),
+            ];
+            for number in [Number::Singular, Number::Plural] {
+                tags.push(Self::Determiner(number));
+                tags.push(Self::Noun(number));
+                tags.push(Self::Proper(number));
+            }
+            tags.extend(crate::lexicon::pronouns());
+            for form in [
+                Form::Base,
+                Form::ThirdSingular,
+                Form::Past,
+                Form::PastSingular,
+                Form::PastPlural,
+                Form::Participle,
+                Form::Gerund,
+            ] {
+                tags.push(Self::Verb(form));
+            }
+            tags
+        })
     }
 
     /// Whether this tag can head a noun phrase.
@@ -192,7 +200,7 @@ mod tests {
     #[test]
     fn every_tag_is_listed_once() {
         let all = Tag::every();
-        let mut seen = all.clone();
+        let mut seen = all.to_vec();
         seen.sort_by_key(|tag| format!("{tag:?}"));
         seen.dedup();
         assert_eq!(

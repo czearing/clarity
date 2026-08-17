@@ -120,9 +120,12 @@ there is counted, held to that count in both directions, and set out in `docs/LI
 | Faults left in seven hundred units of the crate's own prose | 57, bounded in both directions |
 
 Every example above is compiled and run as a doctest. Timings are what `cargo bench` reports for
-`benches/read.rs`; on the machine that wrote this, checking a short sentence takes about ten
-microseconds, a fifteen word sentence about thirty-five, and finding a repair about seventy. Those
-are the only numbers here that no test asserts, because a time is a fact about a machine.
+`benches/read.rs`; on the machine that wrote this, checking a short sentence takes about two
+milliseconds, a fifteen word sentence about two, and finding a repair about four. The length
+barely matters, because the first step has to consider every state and the rest of the sentence
+only visits the few that stay in play. A repository of a hundred thousand words takes eleven
+seconds. Those are the only numbers here that no test asserts, because a time is a fact about a
+machine.
 
 ## Design
 

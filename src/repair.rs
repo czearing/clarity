@@ -4,9 +4,9 @@
 //! same word. Nothing is added, removed, or reworded, so a repair never changes what was meant.
 
 use crate::check::{check_in, Report};
-use crate::grammar::Sentence;
+use crate::grammar::{Rule, Sentence};
 use crate::register::{Convention, Register};
-use crate::tag::Tag;
+use crate::tag::{Form, Tag};
 
 /// A word replaced by another form of itself.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -45,8 +45,8 @@ pub fn repair_in(sentence: &Sentence, register: Register) -> Option<Vec<Edit>> {
     }
     let sites = sites(&report);
     let reading = &report.tags;
-    single(sentence, &sites, reading, register)
-        .or_else(|| pair(sentence, &sites, reading, register))
+    single(sentence, &sites, reading, register, &report)
+        .or_else(|| pair(sentence, &sites, reading, register, &report))
 }
 
 /// Positions a fault touches, latest first.
@@ -63,6 +63,30 @@ fn sites(report: &Report) -> Vec<usize> {
     sites.dedup();
     sites.reverse();
     sites
+}
+
+/// Whether a rule broken over `at` asks for the plain form of a verb.
+///
+/// A repair offers the form the broken rule named. Two things have to hold before an ending comes
+/// off, and each rules out a different way of inventing a stem.
+///
+/// The rule broken there must be one that asks for the plain form, so the sentence is actually
+/// short of a form rather than merely holding a word that ends in those letters. The word must
+/// also have been read as a participle or a preterite, because a word can end in those letters
+/// without carrying the inflection. Both questions are answered by what the engine already
+/// settled rather than by the spelling, which is what keeps the rule from being a guess about
+/// letters.
+fn strips(report: &Report, reading: &[Tag], at: usize) -> bool {
+    let asked = report.faults.iter().any(|fault| {
+        matches!(fault.rule, Rule::ModalTakesBase | Rule::ToTakesBase)
+            && at >= fault.at.start
+            && at < fault.at.end
+    });
+    asked
+        && matches!(
+            reading.get(at),
+            Some(Tag::Verb(Form::Past | Form::Participle))
+        )
 }
 
 /// Whether the word at `at` has other forms to offer, given how it was read.
@@ -87,12 +111,13 @@ fn single(
     sites: &[usize],
     reading: &[Tag],
     register: Register,
+    report: &Report,
 ) -> Option<Vec<Edit>> {
     sites
         .iter()
         .filter(|&&at| inflects(reading, at))
         .find_map(|&at| {
-            forms(&sentence.tokens[at].word)
+            forms(&sentence.tokens[at].word, strips(report, reading, at))
                 .into_iter()
                 .find(|word| {
                     clears(
@@ -114,6 +139,7 @@ fn pair(
     sites: &[usize],
     reading: &[Tag],
     register: Register,
+    report: &Report,
 ) -> Option<Vec<Edit>> {
     for (index, &first) in sites.iter().enumerate() {
         if !inflects(reading, first) {
@@ -123,8 +149,11 @@ fn pair(
             if !inflects(reading, second) {
                 continue;
             }
-            for left in forms(&sentence.tokens[first].word) {
-                for right in forms(&sentence.tokens[second].word) {
+            for left in forms(&sentence.tokens[first].word, strips(report, reading, first)) {
+                for right in forms(
+                    &sentence.tokens[second].word,
+                    strips(report, reading, second),
+                ) {
                     let edits = vec![
                         Edit {
                             at: first,
@@ -173,7 +202,11 @@ pub fn apply(sentence: &Sentence, edits: &[Edit]) -> Sentence {
 /// proposes ".es" and applied to a numeral it proposes "2es", and a repair that writes either has
 /// done more damage than the fault it was called to mend. Three things bound it, and each answers
 /// a different way of inventing a word.
-fn forms(word: &str) -> Vec<String> {
+///
+/// `wants_base` says whether the rule this word broke asked for the plain form of a verb. An
+/// ending is taken off only then, because removing one invents a stem and adding one derives a
+/// form from a word already in hand.
+fn forms(word: &str, wants_base: bool) -> Vec<String> {
     let lower = word.to_lowercase();
     if !lower.chars().all(char::is_alphabetic) {
         return Vec::new();
@@ -203,7 +236,22 @@ fn forms(word: &str) -> Vec<String> {
             }
             None => {}
         }
-        out.extend(bare(&lower));
+        // Taking the past ending off is offered only where a rule has asked for the plain form.
+        // English spells the past of a stem ending in "e" by adding "d" and of any other stem by
+        // adding "ed", so a word ending in "ed" has two decompositions and its spelling does not
+        // say which: "measured" is "measur" plus "ed" or "measure" plus "d", and both put the
+        // word back together again. A round trip settles a plural because "categorys" is not how
+        // English spells it, and it settles nothing here, so spelling alone cannot license the
+        // strip. Over an unseen repository, offered wherever a word merely ended in "ed", it was
+        // wrong nineteen times out of nineteen: "defin", "hydrat", "dissolv", "measur", "stat",
+        // "ag" and "ne", and its two real words were both correct participles it would have
+        // broken. None of those sat under a rule asking for a plain form. What licenses it is
+        // that the sentence is being held to one: "he must walked" breaks a rule that names the
+        // form it wants, and the stem is then a form the grammar asked for rather than a word
+        // invented from a spelling.
+        if wants_base {
+            out.extend(bare(&lower));
+        }
     }
     // What the lexicon lists, it has an opinion about, and a rule may not overrule it. "written"
     // is listed as a participle and "be" as a plain verb, so deriving "writtens" and "bes" is a
@@ -225,11 +273,11 @@ fn forms(word: &str) -> Vec<String> {
 
 /// The word with the past inflection taken off, where taking it off is not a guess.
 ///
-/// English doubles a final consonant before \"ed\" sometimes and not others, and nothing in the
-/// written word says which: \"summed\" comes from \"sum\" and \"filled\" comes from \"fill\".
-/// Stripping the ending alone gives \"summ\", which no English word looks like, because no stem
-/// ends in a doubled consonant. That is the tell, and where it shows the answer is refused rather
-/// than guessed at.
+/// English doubles a final consonant before "ed" sometimes and not others, and nothing in the
+/// written word says which: "summed" comes from "sum" and "filled" comes from "fill". Stripping
+/// the ending alone gives "summ", which no English word looks like, because no stem ends in a
+/// doubled consonant. That is the tell, and where it shows the answer is refused rather than
+/// guessed at.
 fn bare(word: &str) -> Option<String> {
     let stem = word.strip_suffix("ed")?;
     let mut letters = stem.chars().rev();
@@ -319,16 +367,35 @@ mod tests {
     fn no_word_is_offered_a_second_inflection() {
         // "summed" already carries one. Marking it again gives "summeds", which has the shape of
         // a plural and passes every test that asks what a word looks like.
-        assert!(!forms("summed").iter().any(|form| form.ends_with('s')));
-        assert!(forms("file").contains(&"files".to_owned()));
+        assert!(!forms("summed", false)
+            .iter()
+            .any(|form| form.ends_with('s')));
+        assert!(forms("file", false).contains(&"files".to_owned()));
     }
 
     #[test]
-    fn a_stem_that_cannot_be_recovered_is_refused() {
-        // "walked" gives "walk". "summed" would give "summ", and no English stem ends in a
-        // doubled consonant, so the answer is refused rather than guessed at.
-        assert!(forms("walked").contains(&"walk".to_owned()));
-        assert!(!forms("summed").contains(&"summ".to_owned()));
+    fn a_stem_is_only_taken_off_where_a_rule_asked_for_the_plain_form() {
+        // "measured" is "measur" plus "ed" or "measure" plus "d" and nothing in the spelling says
+        // which. Where nothing asked for a plain form the question is left alone rather than
+        // guessed at, which is what keeps "defin", "ag" and "ne" out of an unseen repository.
+        for word in ["measured", "walked", "summed", "defined", "aged", "need"] {
+            assert!(
+                !forms(word, false)
+                    .iter()
+                    .any(|form| word.starts_with(form.as_str())),
+                "a stem was guessed at for {word}: {:?}",
+                forms(word, false)
+            );
+        }
+        // Asked for, it is offered, and still refused where the spelling cannot say what the
+        // stem was: "summed" would give "summ", which no English stem looks like.
+        assert!(forms("walked", true).contains(&"walk".to_owned()));
+        assert!(!forms("summed", true).contains(&"summ".to_owned()));
+    }
+
+    #[test]
+    fn a_modal_left_with_a_past_verb_is_given_the_plain_form() {
+        assert_eq!(fixed("he must walked"), "he must walk");
     }
 
     fn fixed(text: &str) -> String {

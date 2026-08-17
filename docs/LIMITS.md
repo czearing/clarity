@@ -308,3 +308,50 @@ tried again without the missing piece, which is a gerund phrase that keeps its o
 In practice: point the plain pass at a repository and allow it to write. Point repair at a
 repository, read the diff, and expect it to be right on ordinary prose and wrong on prose
 that is mostly quoted code, headings and grammatical examples. Do not let condense write at all.
+
+## A word that ends in an inflection's letters without carrying the inflection
+
+An unseen repository asked the engine to read "the value must exceed the limit". It charged the
+modal for having no plain form after it, and the repair sent to mend it offered "exce".
+
+The lexicon read any word ending in "ed" as a preterite and, having placed it, withheld the plain
+form. "need", "exceed", "speed" and "proceed" end in those letters without carrying the
+inflection, so each was denied the reading it actually had.
+
+English adds "d" to a stem that already ends in "e" and "ed" to every other stem. So a word whose
+"ed" comes off to leave an "e" was never spelled by that rule: "ne" would give "ned", not "need".
+The letters belong to the stem, and the word now keeps its plain form as well. The preterite is
+still offered, because "freed" really is one, and the sentence chooses. This is the rule the
+lexicon already used for "chorus" against a plural.
+
+The engine reads the prose in this repository exactly as it did before, so the fix cost nothing
+it was getting right.
+
+## What licenses taking an ending off
+
+Removing an inflection invents a stem, where adding one derives a form from a word already in
+hand. Offered on spelling alone over an unseen repository, the strip was wrong nineteen times out
+of nineteen: "defin", "hydrat", "dissolv", "measur", "stat", "ag" and "ne". Its only two real
+words were correct participles it would have broken.
+
+Two things now have to hold. A rule that asks for the plain form must have been broken there, so
+the sentence is short of a form rather than merely holding a word that ends in those letters. And
+the word must have been read as a participle or a preterite. Both are answered by what the engine
+already settled rather than by the spelling. "He must walked" is repaired to "he must walk", and
+the nineteen inventions are gone.
+
+## Speed
+
+The engine took about eight tenths of a second on every sentence, whatever the sentence said, and
+about twenty-five minutes on a repository of a hundred thousand words. Nearly every second went
+into the decode, which laid out a successor list for every state in the grid before it started and
+then swept them again at every word. A sentence reaches very few of them.
+
+The decode now asks for a successor list one state at a time, prices a state only when something
+still in play can reach it, and carries the live states forward. Backpointers are kept for the
+live states of each step rather than for the whole grid. This is fixed in fitkit, so any model
+built on it gains the same.
+
+A sentence now costs about five thousandths of a second. That repository takes eleven seconds,
+this one takes three, and the self-audit that ran for five to thirteen minutes now takes four
+seconds. Every reading is byte for byte what it was, which is how the change was checked.
