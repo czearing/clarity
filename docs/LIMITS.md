@@ -234,3 +234,77 @@ That is thirty-one proposals down to twenty-seven, and every one of the twenty-s
 alarm: quoted grammatical examples, doc comment fragments, and noun phrases used as headings.
 Precision on prose the engine has not been tuned against remains nought, so nothing was written.
 The write path is exercised by tests and by the plain pass; repair reports and does not apply.
+
+## What the passes do on prose that is actually bad
+
+Every measurement above was taken on this repository and on fitkit, and both are written with
+some care. That flatters two passes and hides what the third is for, so the same three passes
+were run over a file of the padded, hedged doc comments a language model writes when it is asked
+to document code.
+
+Repair found four disagreements and three of them were real: "this function delete the user",
+"the users is removed", "each of the check are performed". Applied, they went into the file and a
+second pass had nothing left to say. The fourth was "developers who wish", and it is the reason
+the relative pronoun below was fixed.
+
+The plain pass found nine, and all nine were right: "due to the fact that" for "because", "at this
+point in time" for "now", "prior to" for "before", "in order to" for "to", "leverage" for "use",
+and "it is important to note that this" for "this". This is what the pass is for, and slop is
+where it shows.
+
+Condense proposed six. Two dropped exactly the sentence that carried nothing. The rest kept the
+weaker of two sentences. Handed a summary and its restatement, it kept "each of the check are
+performed in sequence" and dropped the sentence that named what was being validated. The limit
+recorded above is unchanged and is not a matter of tuning. Fault cost measures whether a sentence
+is well formed, and being well formed is not the same as carrying the point.
+
+So the passes are not equally ready, and the difference is not one of polish. The plain pass
+states its replacement, which is why it can be trusted to a file. Repair derives one, which is
+safe when the prose is ordinary and unsafe when it is dense. Condense selects one, and selection
+is the open problem.
+
+## A relative pronoun has no number of its own
+
+"Developers who wish to leverage it" was charged with disagreement and offered "wishes". The
+lexicon had "who" as third person singular, which it is not: a relative pronoun takes the number
+of the noun it stands for, and that noun is outside the clause the verb is in. Both readings are
+now offered and the sentence settles which, exactly as existential "there" has always been
+handled here.
+
+This is the largest single correction measured so far. Across fitkit it took the repair pass from
+twenty-seven proposals to three, because a relative clause is how most sentences in a doc comment
+attach a description to a thing.
+
+## Two joined gerunds may be one activity or two
+
+"Cutting and rejoining a log is all the model needs" was charged for a singular verb after a
+coordinated subject, on the rule that two subjects joined are plural. That rule is right for
+nouns and wrong for gerund phrases: "cutting and rejoining are two operations" counts them and
+"cutting and rejoining a log is" names one act, and both are ordinary English. Nothing inside the
+sentence says which was meant.
+
+A gerund subject is now held apart from a singular noun, because it is a clause doing a noun's
+job, and joining two of them gives a subject that agrees either way and is charged for neither.
+Joined nouns are untouched: "the dog and the cat is here" is still caught, and so is "running
+tests are easy", where there is only one gerund and nothing to be ambiguous about.
+
+The engine reads its own prose one fault better for this, and fitkit's remaining proposals fell
+from three to two.
+
+## What is still wrong, and what it means for running this on a repository
+
+Two false alarms are left on fitkit and about twenty-five on this repository, which is the denser
+of the two. They are no longer one root but several small ones. A gerund and its object are not
+held together as one subject phrase, so "reading prose out of a file and reading it back in"
+still loses its subject to "prose". Neither "let" nor "letting" is known to take a bare
+infinitive, so "let go" is charged. A noun phrase used as a heading is asked to be a sentence.
+A reduced relative with its "that" left out is not recognised.
+
+An attempt was made to close the first of these by treating a second gerund before the verb as
+joined to the first. It changed neither repository and it would have hidden a real fault in
+"reading files using a parser is easy", so it was reverted. It is recorded here so it is not
+tried again without the missing piece, which is a gerund phrase that keeps its object.
+
+In practice: point the plain pass at a repository and allow it to write. Point repair at a
+repository, read the diff, and expect it to be right on ordinary prose and wrong on prose
+that is mostly quoted code, headings and grammatical examples. Do not let condense write at all.

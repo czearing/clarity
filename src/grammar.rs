@@ -627,15 +627,16 @@ pub fn disagrees(frame: Frame, tag: Tag) -> bool {
     }
     matches!(
         (frame.answering(), tag),
-        (Subject::Third, Tag::Verb(Form::Base | Form::PastPlural))
-            | (
-                Subject::First,
-                Tag::Verb(Form::ThirdSingular | Form::PastPlural)
-            )
-            | (
-                Subject::Other,
-                Tag::Verb(Form::ThirdSingular | Form::PastSingular)
-            )
+        (
+            Subject::Third | Subject::Activity,
+            Tag::Verb(Form::Base | Form::PastPlural)
+        ) | (
+            Subject::First,
+            Tag::Verb(Form::ThirdSingular | Form::PastPlural)
+        ) | (
+            Subject::Other,
+            Tag::Verb(Form::ThirdSingular | Form::PastSingular)
+        )
     )
 }
 
@@ -720,8 +721,10 @@ mod tests {
 
     use fitkit_guards::assert_friction_never_reaches_a_rule;
 
-    use super::{scale, unmet, why, Cost, Frame, Grammar, Rule, Sentence, CEILING, LONGEST};
-    use crate::tag::{Form, Number, Tag};
+    use super::{
+        disagrees, scale, unmet, why, Cost, Frame, Grammar, Rule, Sentence, CEILING, LONGEST,
+    };
+    use crate::tag::{Form, Join, Number, Tag};
 
     fn tags(text: &str) -> Vec<Tag> {
         recover(&Grammar::default(), &Sentence::read(text))
@@ -777,6 +780,35 @@ mod tests {
     #[test]
     fn no_run_of_friction_reaches_a_broken_rule() {
         assert_friction_never_reaches_a_rule(scale(), LONGEST, Cost::friction(CEILING));
+    }
+
+    #[test]
+    fn two_joined_gerunds_agree_either_way_and_one_gerund_does_not() {
+        // "Cutting and rejoining a log is all it needs" names one act; "cutting and rejoining are
+        // two operations" counts two. Nothing in the sentence says which was meant, so neither
+        // form is charged. A single gerund is settled, and is still held to the singular.
+        let joined = Frame::opening()
+            .after(Tag::Verb(Form::Gerund))
+            .after(Tag::Coordinator(Join::Sum))
+            .after(Tag::Verb(Form::Gerund));
+        assert!(!disagrees(joined, Tag::Verb(Form::ThirdSingular)));
+        assert!(!disagrees(joined, Tag::Verb(Form::Base)));
+
+        let alone = Frame::opening().after(Tag::Verb(Form::Gerund));
+        assert!(!disagrees(alone, Tag::Verb(Form::ThirdSingular)));
+        assert!(disagrees(alone, Tag::Verb(Form::Base)));
+    }
+
+    #[test]
+    fn two_joined_nouns_are_still_plural() {
+        // The exception is about gerunds only. Joined nouns count, and a singular verb after them
+        // is the disagreement it has always been.
+        let joined = Frame::opening()
+            .after(Tag::Noun(Number::Singular))
+            .after(Tag::Coordinator(Join::Sum))
+            .after(Tag::Noun(Number::Singular));
+        assert!(disagrees(joined, Tag::Verb(Form::ThirdSingular)));
+        assert!(!disagrees(joined, Tag::Verb(Form::Base)));
     }
 
     #[test]

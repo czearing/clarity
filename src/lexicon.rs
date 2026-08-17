@@ -72,7 +72,14 @@ const PRONOUNS: &[(&str, Person, Number, Case)] = &[
     ("him", Person::Third, Number::Singular, Case::Object),
     ("them", Person::Third, Number::Plural, Case::Object),
     ("they", Person::Third, Number::Plural, Case::Subject),
+    // "who" is a relative pronoun before it is anything else, and a relative pronoun has no number
+    // of its own: it takes the number of the noun it stands for. "a developer who wishes" and
+    // "developers who wish" are both right, and which one is right is settled by a word outside the
+    // clause. So both readings are offered and the sentence picks one, exactly as existential
+    // "there" is handled below. Fixing the number here instead blames "developers who wish" for a
+    // disagreement with a singular nobody wrote.
     ("who", Person::Third, Number::Singular, Case::Subject),
+    ("who", Person::Third, Number::Plural, Case::Subject),
     ("everyone", Person::Third, Number::Singular, Case::Either),
     ("everybody", Person::Third, Number::Singular, Case::Either),
     ("someone", Person::Third, Number::Singular, Case::Either),

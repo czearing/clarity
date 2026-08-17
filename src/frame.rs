@@ -57,6 +57,20 @@ pub enum Subject {
     First,
     /// Any other subject, which every present tense verb meets in its plain form.
     Other,
+    /// A gerund phrase standing as the subject, as in "running tests is easy".
+    ///
+    /// It agrees exactly as `Third` does. It is held apart from `Third` because it is a clause
+    /// doing a noun's job rather than a noun, and coordinating two of them does not mean what
+    /// coordinating two nouns means.
+    Activity,
+    /// A subject English lets agree either way, so neither form is a disagreement.
+    ///
+    /// Two coordinated gerund phrases may name one activity or two, and both readings are
+    /// ordinary English: "cutting and rejoining a log is all it needs" describes a single act,
+    /// while "cutting and rejoining are two operations" counts them. Nothing inside the sentence
+    /// settles which was meant. Charging either form would blame the writer for a choice the
+    /// grammar left open, so this agrees with both and is charged for neither.
+    Either,
     /// A command, which is allowed to have no subject and agrees with nothing.
     Command,
 }
@@ -313,16 +327,26 @@ impl Frame {
             // Before the verb a joining word is joining subjects, and two subjects joined are
             // plural however singular each was: "agreement and predication are structural". After
             // the verb there is nothing left to join but clauses, so a fresh one starts.
+            //
+            // Joined gerund phrases are the exception, because they may still name one activity.
+            // They become the subject that agrees either way rather than a plural one.
             Tag::Coordinator(Join::Sum)
                 if !self.tensed
                     && !self.slot.aside()
                     && matches!(
                         self.subject,
-                        Subject::Third | Subject::First | Subject::Other
+                        Subject::Third
+                            | Subject::First
+                            | Subject::Other
+                            | Subject::Activity
+                            | Subject::Either
                     ) =>
             {
                 Self {
-                    subject: Subject::Other,
+                    subject: match self.subject {
+                        Subject::Activity | Subject::Either => Subject::Either,
+                        _ => Subject::Other,
+                    },
                     ..carried
                 }
             }
@@ -521,8 +545,8 @@ fn features(tag: Tag) -> Option<Subject> {
         // easy" agrees. Without this the noun inside the phrase is mistaken for the subject.
         Tag::Noun(Number::Singular)
         | Tag::Proper(Number::Singular)
-        | Tag::Pronoun(Person::Third, Number::Singular, _)
-        | Tag::Verb(Form::Gerund) => Some(Subject::Third),
+        | Tag::Pronoun(Person::Third, Number::Singular, _) => Some(Subject::Third),
+        Tag::Verb(Form::Gerund) => Some(Subject::Activity),
         Tag::Pronoun(Person::First, Number::Singular, _) => Some(Subject::First),
         Tag::Noun(Number::Plural) | Tag::Proper(Number::Plural) | Tag::Pronoun(..) => {
             Some(Subject::Other)
