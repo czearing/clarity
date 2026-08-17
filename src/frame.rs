@@ -420,6 +420,24 @@ impl Frame {
                 ever: true,
                 ..carried
             },
+            // The head of a noun phrase is its last noun, so "the volume fractions" is about the
+            // fractions and takes a plural verb. A noun standing straight after the noun the
+            // phrase is headed by is still inside that phrase and takes the head over, which is
+            // the same reading the rule against a plural modifier already assumes: it charges
+            // "dog books" for the modifier and leaves the head alone. Only a determiner, a numeral
+            // or a pronoun begins a phrase of its own, and that is what the branch below is for.
+            //
+            // Fixing the subject on the first noun and never revising it read "where the volume
+            // fractions are equal" as a singular subject, and repair then offered "is".
+            Tag::Noun(_) | Tag::Proper(_)
+                if !self.tensed && self.slot.read() && self.phrase == Phrase::Whole =>
+            {
+                Self {
+                    subject: features(tag).unwrap_or(Subject::None),
+                    slot: carried.slot.filled(features(tag).is_some()),
+                    ..carried
+                }
+            }
             // A noun phrase begun where the clause already has its subject, has no verb yet, and
             // has nothing linking the two, is not a second subject: it is the subject of a clause
             // of its own, as in "the conventions a passage holds to". A preposition, a determiner

@@ -225,7 +225,16 @@ fn forms(word: &str, wants_base: bool) -> Vec<String> {
     // each is a real entry in the lexicon, so asking whether the result is a word does not catch
     // any of them. What catches them is that English does not make new determiners or pronouns.
     if !crate::lexicon::is_closed(&lower) {
+        // Taking a plural ending off invents a stem in the same way taking a past ending off
+        // does, and the round trip does not always catch it: "citru" plus "s" spells "citrus",
+        // so the spelling licenses a word that is not one. What settles it is that the lexicon
+        // already reads "citrus" as a singular, because English does not spell a plural by
+        // adding a bare s to a stem ending in u. A rule asking for a singular and a word that
+        // already offers one disagree about the reading, not about the spelling, so there is
+        // nothing here to respell. "dogs" offers no singular and still reaches "dog".
+        let singular = crate::lexicon::offers(&lower, Tag::Noun(crate::tag::Number::Singular));
         match plain(&lower) {
+            Some(_) if singular => {}
             Some(stem) => out.push(stem),
             // English does not put one inflection on top of another. A word already carrying a
             // verbal ending has no plural to offer, and marking it stacks a second: "summed"

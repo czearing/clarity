@@ -355,3 +355,54 @@ built on it gains the same.
 A sentence now costs about five thousandths of a second. That repository takes eleven seconds,
 this one takes three, and the self-audit that ran for five to thirteen minutes now takes four
 seconds. Every reading is byte for byte what it was, which is how the change was checked.
+
+## The head of a noun phrase is its last noun
+
+An unseen repository wrote "with inversion where the volume fractions are equal", and the engine
+charged the plural verb and sent a repair offering "is".
+
+The clause fixed its subject on the first noun it read and never revised it, so "the volume" was
+what "are" had to answer to. English puts the head of a noun phrase last: "the volume fractions"
+is about fractions, which is the same reading the rule against a plural modifier already takes,
+since it charges "dog books" for the modifier and leaves the head alone. A noun standing straight
+after the noun the phrase is headed by now takes the head over. A determiner, a numeral or a
+pronoun still begins a phrase of its own, so "the conventions a passage holds to" is unchanged.
+
+Eight false alarms went from the unseen repository and the engine reads its own prose exactly as
+it did.
+
+## Respelling a word the lexicon can already read
+
+A repair offered "citru" for "citrus" in "all ten citrus fruits". Putting the ending back spells
+the word again, so the round trip that catches "categorys" says nothing here.
+
+What settles it is that the lexicon already reads "citrus" as a singular, because English does not
+spell a plural onto a stem that already ends in a vowel letter. A rule asking for a singular and a
+word that already offers one disagree about the reading, not about the spelling, so there is
+nothing to respell and the repair is declined. The word "dogs" offers no singular reading of
+its own, so it still reaches "dog".
+
+## What the passes are worth on an unseen repository
+
+Measured over a hundred and forty prose bearing files, about a hundred thousand words.
+
+The plain pass proposed twenty cuts and every one of them was right: "actually", "simply", "very"
+and "a majority of", each removed from a sentence that says the same thing without it. That pass
+is safe to let write.
+
+Repair proposed thirty eight swaps and one of them was right, which is a precision of about one in
+forty. Nine were doc comment summaries, which are noun phrases by convention and were asked to be
+sentences. Four were words read as nouns that are not nouns, so an invented plural passed a test
+that only asks what a word looks like. The remaining twenty four were agreement, where the engine
+had settled on a subject the writer did not mean. None of them invented a word, which the two
+earlier sections are what fixed, but a swap that is wrong is still wrong.
+
+The plain pass can be run and allowed to write. Repair is worth running for its diff alone, and
+it should not be allowed to write unattended on prose this dense in code, headings and quoted
+identifiers. Condense should not be allowed to write at all.
+
+## Speed on a book
+
+Ninety thousand words of ordinary prose, six thousand sentences: twenty six seconds to read, thirty
+nine to read and find repairs, forty five to read and find cuts. The unseen repository takes eleven
+seconds for the same work, because a source file is mostly code.

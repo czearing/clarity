@@ -743,6 +743,21 @@ pub fn knows(key: &str) -> bool {
     listed(key).is_some() || !inflected(key, false).is_empty()
 }
 
+/// Whether the lexicon already gives `key` the reading `tag`.
+///
+/// Asked before a repair respells a word. A rule that wants a singular noun and a word that
+/// already offers one are not a spelling fault: the reading chosen was the wrong one, and
+/// respelling the word answers a question nobody asked. "citrus" is offered as a singular
+/// because English does not spell a plural onto a stem that already ends in a vowel letter,
+/// and without this a repair sent to mend "ten citrus fruits" offered "citru".
+///
+/// Read off the same two sources as [`knows`], so a reading the engine can choose is a reading
+/// this reports and the two can never drift apart.
+#[must_use]
+pub fn offers(key: &str, tag: Tag) -> bool {
+    listed(key).is_some_and(|found| found.contains(&tag)) || inflected(key, false).contains(&tag)
+}
+
 /// Whether a word belongs to a closed class, so it frames a point rather than carrying one.
 ///
 /// Read off the readings the lexicon offers rather than from a separate list, so the two can never
