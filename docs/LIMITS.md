@@ -489,14 +489,38 @@ reader what they are looking at. A body has to be opened and followed, so a sent
 saves the reading it would have taken. Only the second kind is written.
 
 The effect is severe and it is the point. On the unseen repository this fell from 1948 comments
-over 5010 items to 4. Every one of the four says the same thing, that the item can stop the
-program, and every one of them is a thing a caller has to know and cannot see. The 1944 that went
-were the name spelled out again, or the return type spelled out again, above a declaration that
-already said both.
+over 5010 items to 3. Every one of the three says the same thing, that the item can stop the
+program, and every one of them is a thing a caller has to know and cannot see. The rest were the
+name spelled out again, or the return type spelled out again, above a declaration that already
+said both.
 
 What this measures is how little of what the pass knows is worth writing down, not how little it
 knows. Widening it means finding more in bodies, because that is the only place a reader is not
 already looking.
+
+## A stop is only worth reporting where nothing else can be
+
+A call answering with a failure or with nothing has somewhere to put what went wrong, and a reader
+of the declaration already expects it. A stop written inside such a call is the author saying that
+a case cannot arise, guarded somewhere they could see. A call answering with a plain value has no
+such channel, so a stop in it is the whole of how it fails.
+
+Only the second is written. Read by hand, the four first reported were two of each. Both of the
+suppressed ones proved to be assertions that cannot fire: one converts a slice of exactly eight
+bytes into an array of eight, and the other takes the last of a list a validator has already
+refused to leave empty. Both return a `Result` that reports every failure that can happen. Both
+comments would have been false.
+
+Three things about stops are known and unfixed. An assertion is found by the name of the macro
+where it stands as a statement, which is how one is almost always written, so an assertion buried
+in the middle of an expression is missed. The debug forms are deliberately not counted, since a
+release build compiles them away and a comment saying otherwise would be wrong where it matters.
+And nothing is said about arithmetic that overflows, an index out of range, or a division by zero,
+because those stop without being written down anywhere the pass can see.
+
+Whether a stop can be reached is never asked. A stop guarded by a check the pass cannot follow
+still reads as a stop, which is the safe direction to be wrong in for a warning and the reason the
+signature test above matters: it removes the cases where a reader had a better warning already.
 
 ## Reporting comments that say nothing
 

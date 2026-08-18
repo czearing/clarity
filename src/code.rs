@@ -23,7 +23,7 @@
 
 use proc_macro2::Span;
 use syn::spanned::Spanned;
-use syn::{Expr, FnArg, ImplItem, Pat, PatType, ReturnType, Signature, Stmt, Type, Visibility};
+use syn::{FnArg, ImplItem, Pat, PatType, ReturnType, Signature, Stmt, Type, Visibility};
 
 /// What the code was found to say.
 ///
@@ -370,27 +370,81 @@ fn walk_stmt(stmt: &Stmt, halts: &mut bool) {
             .as_ref()
             .map(|init| quote_of(&init.expr))
             .unwrap_or_default(),
-        _ => String::new(),
+        Stmt::Item(_) | Stmt::Macro(_) => String::new(),
     };
+    // A statement may be a macro, and the ones that stop the program are most often written that
+    // way, on a line by themselves with nothing done to the result. It is asked for its name
+    // rather than written out, because writing out the arguments of every assertion in a test file
+    // costs more than the whole of the rest of the pass.
+    if let Stmt::Macro(called) = stmt {
+        if let Some(name) = called.mac.path.segments.last() {
+            if STOPPERS.contains(&name.ident.to_string().as_str()) {
+                *halts = true;
+            }
+        }
+    }
     if stops(&text) {
         *halts = true;
     }
 }
 
+/// The macros that end the program when they are reached, or when their check does not hold.
+///
+/// The debug forms are left out, because a release build compiles them away, so a comment saying
+/// the program can stop there would be wrong wherever it matters.
+const STOPPERS: [&str; 7] = [
+    "panic",
+    "unreachable",
+    "todo",
+    "unimplemented",
+    "assert",
+    "assert_eq",
+    "assert_ne",
+];
+
 /// The text of an expression, used to ask what it does rather than to rewrite it.
-fn quote_of(expr: &Expr) -> String {
-    use quote::ToTokens;
-    expr.to_token_stream().to_string()
+fn quote_of(part: &impl quote::ToTokens) -> String {
+    part.to_token_stream().to_string()
 }
 
 /// Whether a piece of code can stop the program where it stands.
 ///
 /// This looks only for the names the standard library uses when it stops. A call that stops is
 /// found by what it calls, and no list has to be kept.
+///
+/// An assertion is one of them. It reads as a check rather than as a stop, but failing it ends the
+/// program exactly as the others do, and a caller who is never told cannot tell the difference.
+/// The debug forms are not, because they are compiled out of a release build, so a comment saying
+/// the program can stop there would be wrong wherever it matters.
 fn stops(text: &str) -> bool {
-    ["panic !", "unreachable !", ". unwrap ()", ". expect ("]
-        .iter()
-        .any(|mark| text.contains(mark))
+    [
+        "panic !",
+        "unreachable !",
+        "todo !",
+        "unimplemented !",
+        ". unwrap ()",
+        ". expect (",
+    ]
+    .iter()
+    .any(|mark| calls(text, mark))
+}
+
+/// Whether this text calls something by this name, rather than merely containing the letters.
+///
+/// A name is only a name where it starts, so what comes before it has to be something a name cannot
+/// be written with. Without this a name written inside a longer one answers to the shorter, and a
+/// stop a release build compiles away is reported as one that happens.
+fn calls(text: &str, mark: &str) -> bool {
+    let mut from = 0;
+    while let Some(at) = text[from..].find(mark) {
+        let start = from + at;
+        let before = text[..start].chars().next_back();
+        if !before.is_some_and(|letter| letter.is_alphanumeric() || letter == '_') {
+            return true;
+        }
+        from = start + 1;
+    }
+    false
 }
 
 /// The outermost name in a type, which is what the type is.

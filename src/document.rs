@@ -87,7 +87,7 @@ fn chosen(piece: &Piece) -> Vec<String> {
             told: false,
         });
     }
-    offered.extend(piece.facts.iter().filter_map(line));
+    offered.extend(piece.facts.iter().filter_map(|found| line(found, piece)));
     let mut kept: Vec<String> = Vec::new();
     for candidate in &offered {
         #[allow(clippy::cast_precision_loss)]
@@ -284,12 +284,12 @@ fn phrase(words: &[String]) -> String {
 /// sit above, so a reader has it either way and a sentence carrying it earns nothing. A body has
 /// to be opened and followed, so a reader does not have it, and a sentence carrying it is the
 /// reason to write a comment at all.
-fn line(found: &crate::code::Finding) -> Option<Line> {
+fn line(found: &crate::code::Finding, piece: &Piece) -> Option<Line> {
     let text = match &found.fact {
         Fact::MayBeAbsent => "Answers with nothing where it finds none.",
         Fact::MayFail => "Reports a failure rather than stopping.",
         Fact::Alters => "Changes what it is used on.",
-        Fact::Halts => "This can stop the program.",
+        Fact::Halts if !reports_failure(piece) => "This can stop the program.",
         _ => return None,
     };
     sound(text).map(|text| Line {
@@ -297,6 +297,20 @@ fn line(found: &crate::code::Finding) -> Option<Line> {
         price: found.price,
         told: found.price > crate::code::SIGNED,
     })
+}
+
+/// Whether the signature gives the call a way to say it failed.
+///
+/// A call answering with a failure or with nothing has somewhere to put what went wrong, and a
+/// reader of the declaration already knows to expect it. A stop written inside such a call is the
+/// author saying that a case cannot arise, guarded somewhere they could see and a reader cannot be
+/// warned about usefully. A call answering with a plain value has no such channel, so a stop in it
+/// is the whole of how it fails, and that is what a caller has to be told.
+fn reports_failure(piece: &Piece) -> bool {
+    piece
+        .facts
+        .iter()
+        .any(|found| matches!(found.fact, Fact::MayFail | Fact::MayBeAbsent))
 }
 
 /// A sentence the engine can read, or nothing.
@@ -408,11 +422,23 @@ mod tests {
     }
 
     #[test]
+    fn a_stop_is_not_reported_where_the_signature_already_admits_a_failure() {
+        // The declaration says this can fail, so a reader expects it. What is left inside is the
+        // author asserting a case cannot arise, guarded somewhere a caller cannot be warned about.
+        for source in [
+            "pub fn ratio(&self) -> Result<f64, Bad> { Ok(self.mass.unwrap()) }",
+            "pub fn ratio(&self) -> Option<f64> { Some(self.mass.unwrap()) }",
+        ] {
+            assert_eq!(comment(source), None, "{source}");
+        }
+    }
+
+    #[test]
     fn every_sentence_written_is_one_the_engine_can_read() {
         for source in [
             "pub fn holds(&self) -> bool { self.value.unwrap() }",
             "impl T { pub fn clear(&mut self) { panic!() } }",
-            "pub fn read_the_file(path: &str) -> Option<String> { open(path).unwrap() }",
+            "pub fn read_the_file(path: &str) -> String { open(path).unwrap() }",
         ] {
             let found = comment(source).unwrap();
             for line in found.lines() {
