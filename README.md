@@ -166,7 +166,7 @@ it is, and a line is written only where it says something the declaration under 
 Most items get nothing, and that is the point. What survives is the stop a caller has no other
 warning of, written with the cause the source already states:
 
-```rust
+```text
 /// # Panics
 ///
 /// Panics unless `values.len()` and `n * n` are equal.
