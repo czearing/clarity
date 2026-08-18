@@ -469,3 +469,27 @@ book-cook-ai the pass reports 748 across 4541 items.
 4541 items across 841 files in 4.4 seconds, including generating and reading back 1646 comments.
 The grammar is the slow part of this repository and the doc pass only reads the short sentences
 it writes, so it costs far less than a pass over prose.
+
+## Names the doc pass still reads as acts when they are not
+
+Whether a name describes an act is settled by the signature, but which word carries the act is
+settled by the lexicon, and the lexicon allows a plain verb reading to almost any word by shape.
+That is right in a sentence, where the words around it settle the question, and wrong in a name,
+where there are none.
+
+Two of the three ways this went wrong are closed. A word already carrying a third person ending is
+only read as a verb when the word left after that ending is one the lexicon lists, which stops
+"Grams the sample" and "Aqueous the sucrose dielectric loss factor" without stopping "holds". A
+closed-class word is never the act of a name, which stops "Withs".
+
+The third is open. A name beginning with an unlisted noun or adjective is still allowed a verb
+reading by shape, so "new", "finite", "sodium" and "eugenol" are inflected as though they were
+verbs. Measured over 1948 comments on an unseen repository, 479 are led by a verb and 46 of those
+are this mistake, which is 2.4% of the comments written.
+
+It is left open because no evidence separates the two cases. The lexicon ranks "parse" and
+"sodium" alike, both are absent from the listing, and both read clean as a noun phrase and as an
+act, so the grammar cannot choose between them either. Requiring the listing would lose
+"Evaluates", "Records" and "Parses" along with the mistakes, and requiring a verb-forming ending
+would keep "Speciates" and "Hydrolyzes" but still lose the rest. A rule that costs more than it
+saves is not an improvement.

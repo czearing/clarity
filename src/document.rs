@@ -149,11 +149,17 @@ fn acting(words: &[String]) -> Option<String> {
     // and wrote "Aqueous the sucrose dielectric loss factor" for a name that describes a thing.
     // What separates the two is whether the word left behind is a verb, which "hold" is and
     // "aqueou" is not.
+    // A closed-class word frames a point rather than carrying one, so it is never the act of a
+    // name however its shape reads. Without this a name beginning "with" was written "Withs".
+    if crate::lexicon::is_closed(first) {
+        return None;
+    }
     let verb = crate::lexicon::offers(first, crate::tag::Tag::Verb(crate::tag::Form::Base));
+    // The stem is asked of the listing rather than of shape, because shape allows "gram" a verb
+    // reading and wrote "Grams the sample" for a name that measures one. A word already ending in
+    // "s" is the case where a name most often looks like an act and is not.
     let third = !verb
-        && crate::repair::plain(first).is_some_and(|stem| {
-            crate::lexicon::offers(&stem, crate::tag::Tag::Verb(crate::tag::Form::Base))
-        });
+        && crate::repair::plain(first).is_some_and(|stem| crate::lexicon::carries_verb(&stem));
     if !(verb || third) {
         return None;
     }

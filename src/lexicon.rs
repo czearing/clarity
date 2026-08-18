@@ -771,6 +771,18 @@ pub fn likeliest(key: &str) -> Option<Tag> {
         .or_else(|| inflected(key, false).first().copied())
 }
 
+/// Whether the lexicon carries `key` as a verb, rather than allowing one by shape.
+///
+/// Shape is what [`offers`] falls back on, and shape allows a plain verb reading to almost any
+/// word. That is harmless in a sentence where the neighbours settle the question and wrong in a
+/// name where there are none. "grams" is not a verb, but "gram" is allowed one, so a name beginning
+/// "grams" was written "Grams the sample." This asks the listing only, so a word English has never
+/// used as a verb cannot be made to act.
+#[must_use]
+pub fn carries_verb(key: &str) -> bool {
+    listed(key).is_some_and(|found| found.iter().any(|tag| matches!(tag, Tag::Verb(_))))
+}
+
 /// Whether a word belongs to a closed class, so it frames a point rather than carrying one.
 ///
 /// Read off the readings the lexicon offers rather than from a separate list, so the two can never
