@@ -406,6 +406,29 @@ fn reports_failure(piece: &Piece) -> bool {
 /// This is the whole of the enforcement. A sentence generated here is read by the same engine that
 /// reads the repository, and one it charges a fault for is not written. So a rule added to the
 /// grammar tightens what may be generated without anything here changing.
+/// A sentence any pass may offer, returned only where the engine can read it.
+///
+/// The gate the item pass writes under, opened to a pass that writes about a whole crate. Both
+/// are held to the same grammar, so a rule added anywhere tightens every generated sentence at
+/// once and nothing has a register of its own to hide behind.
+#[must_use]
+pub fn readable(text: &str) -> Option<String> {
+    sound(text)
+}
+
+/// A noun phrase naming a thing, returned only where the engine can read it as one.
+///
+/// A heading and an opening line name what follows rather than saying something about it, which
+/// is the one place English expects no tensed verb. The convention is dropped rather than the
+/// grammar relaxed, so every other rule still applies.
+#[must_use]
+pub fn nameable(text: &str) -> Option<String> {
+    sound_in(
+        text,
+        crate::register::Register::STRICT.without(crate::register::Convention::Predicate),
+    )
+}
+
 fn sound(text: &str) -> Option<String> {
     sound_in(text, crate::register::Register::STRICT)
 }
@@ -438,7 +461,17 @@ fn spanless(text: &str) -> String {
 /// predicate go. Everything else is held to the whole of English. The register is what says which,
 /// so the difference is a convention the engine already knows rather than an exception here.
 fn sound_in(text: &str, register: crate::register::Register) -> Option<String> {
-    let sentence = Sentence::read(&spanless(text));
+    let plain = spanless(text);
+    // Standing a span in for leaves the same word where two different pieces of code were, so a
+    // sentence naming two of them reads as a repetition it does not contain. The repetition rule
+    // is about content words, and a stand-in is not one, so it is not asked of a sentence that
+    // quotes code. Every other rule still is.
+    let register = if plain == text {
+        register
+    } else {
+        register.without(crate::register::Convention::Fresh)
+    };
+    let sentence = Sentence::read(&plain);
     let report = crate::check::check_in(&sentence, register);
     if report.is_clean() {
         Some(text.to_owned())

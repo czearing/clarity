@@ -410,6 +410,14 @@ const SINGULAR_S_NOUNS: &[&str] = &[
 ///
 /// "data" is here rather than among the irregulars because both "this data is" and "these data
 /// are" are current, and an engine that cannot cite a rule against one must accept both.
+/// Whether English spells this noun the same for one of it and for many.
+///
+/// Asked by the repair pass before it adds an ending, because a noun on this listing takes none.
+#[must_use]
+pub fn is_invariant(word: &str) -> bool {
+    INVARIANT_NOUNS.contains(&word.to_ascii_lowercase().as_str())
+}
+
 const INVARIANT_NOUNS: &[&str] = &[
     "sheep",
     "fish",

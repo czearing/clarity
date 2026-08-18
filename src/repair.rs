@@ -327,6 +327,30 @@ fn bare(word: &str) -> Option<String> {
     Some(stem.to_owned())
 }
 
+/// A phrase with its head word made plural, spelled the way English spells it.
+///
+/// A phrase is pluralised on its head, which in English is its last word, so "public item" becomes
+/// "public items" and the words in front of it are left alone. The irregular listing is asked
+/// first, so a word English does not inflect by rule is still written correctly.
+#[must_use]
+pub fn pluralised(phrase: &str) -> String {
+    let Some((front, head)) = phrase.rsplit_once(' ') else {
+        return one_plural(phrase);
+    };
+    format!("{front} {}", one_plural(head))
+}
+
+/// One word made plural, by the listing where English lists it and by rule where it does not.
+///
+/// English spells some nouns the same for one of them and for many. This leaves such a noun
+/// alone, because an ending added to it writes a word that does not exist.
+fn one_plural(word: &str) -> String {
+    if crate::lexicon::is_invariant(word) {
+        return word.to_owned();
+    }
+    marked(word).unwrap_or_else(|| format!("{word}s"))
+}
+
 /// The word with the plural inflection on it, spelled the way English spells it.
 ///
 /// One spelling, not every spelling. Offering both "{word}s" and "{word}es" and letting the

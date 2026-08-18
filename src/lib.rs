@@ -43,6 +43,7 @@ pub mod prose;
 pub mod register;
 pub mod repair;
 pub mod style;
+pub mod summarise;
 pub mod tag;
 pub mod text;
 pub mod token;

@@ -140,8 +140,69 @@ pub fn findings(source: &str) -> Vec<Piece> {
     found
 }
 
+/// An item whose whole story is its name, its keyword and whether it was commented.
+///
+/// Nothing here has a body to follow or a signature to read, so one arm serves all of them and the
+/// longer reading is left to the items that earn it.
+fn plain_item(item: &syn::Item) -> Option<Piece> {
+    let mut out = Vec::new();
+    match item {
+        syn::Item::Enum(choice) => {
+            out.push(named_item(
+                &choice.ident,
+                "enum",
+                &choice.vis,
+                choice.span(),
+                doc_of(&choice.attrs),
+            ));
+        }
+        syn::Item::Trait(contract) => {
+            out.push(named_item(
+                &contract.ident,
+                "trait",
+                &contract.vis,
+                contract.span(),
+                doc_of(&contract.attrs),
+            ));
+        }
+        syn::Item::Const(fixed) => {
+            out.push(named_item(
+                &fixed.ident,
+                "const",
+                &fixed.vis,
+                fixed.span(),
+                doc_of(&fixed.attrs),
+            ));
+        }
+        syn::Item::Static(fixed) => {
+            out.push(named_item(
+                &fixed.ident,
+                "static",
+                &fixed.vis,
+                fixed.span(),
+                doc_of(&fixed.attrs),
+            ));
+        }
+        syn::Item::Type(alias) => {
+            out.push(named_item(
+                &alias.ident,
+                "type",
+                &alias.vis,
+                alias.span(),
+                doc_of(&alias.attrs),
+            ));
+        }
+        _ => return None,
+    }
+    out.pop()
+}
+
 /// Read one item and everything nested inside it.
 fn walk(item: &syn::Item, source: &str, out: &mut Vec<Piece>) {
+    if let Some(piece) = plain_item(item) {
+        out.push(piece);
+        return;
+    }
     match item {
         syn::Item::Fn(function) => {
             out.push(from_fn(
@@ -155,15 +216,25 @@ fn walk(item: &syn::Item, source: &str, out: &mut Vec<Piece>) {
         }
         syn::Item::Impl(block) => {
             for nested in &block.items {
-                if let ImplItem::Fn(function) = nested {
-                    out.push(from_fn(
+                match nested {
+                    ImplItem::Fn(function) => out.push(from_fn(
                         &function.sig,
                         &function.vis,
                         function.span(),
                         source,
                         doc_of(&function.attrs),
                         body_facts(&function.block.stmts),
-                    ));
+                    )),
+                    // A constant hung off a type is reachable through that type and is part of
+                    // what a caller is offered, so it is counted where a free constant is.
+                    ImplItem::Const(fixed) => out.push(named_item(
+                        &fixed.ident,
+                        "const",
+                        &fixed.vis,
+                        fixed.span(),
+                        doc_of(&fixed.attrs),
+                    )),
+                    _ => {}
                 }
             }
         }
@@ -205,6 +276,31 @@ fn walk(item: &syn::Item, source: &str, out: &mut Vec<Piece>) {
             });
         }
         _ => {}
+    }
+}
+
+/// An item that is named and declared, with nothing in its shape left to read.
+///
+/// Rust declares constants, aliases, traits and enumerations, and a caller can reach for each of
+/// them. None of them has a body to follow or a signature to draw a warning from. What is
+/// known about them is the name, the word Rust declares them with, and whether the author wrote a
+/// comment, which is enough to count them and not enough to describe them.
+fn named_item(
+    ident: &syn::Ident,
+    kind: &'static str,
+    vis: &Visibility,
+    span: Span,
+    written: Vec<String>,
+) -> Piece {
+    Piece {
+        name: ident.to_string(),
+        kind,
+        public: matches!(vis, Visibility::Public(_)),
+        line: span.start().line,
+        indent: span.start().column,
+        documented: !written.is_empty(),
+        doc: written,
+        facts: Vec::new(),
     }
 }
 
