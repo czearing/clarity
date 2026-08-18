@@ -236,6 +236,13 @@ fn forms(word: &str, wants_base: bool) -> Vec<String> {
         match plain(&lower) {
             Some(_) if singular => {}
             Some(stem) => out.push(stem),
+            // English does not inflect an adverb for number. Nothing in the spelling says so, and
+            // the plural rule applied to one invents a word: "correctly" gave "correctlies" and
+            // "everywhere" gave "everywheres", both offered as repairs on a real repository. A
+            // word that is only ever an adverb has no plural to reach for, so the rule is not
+            // asked. A word that is also a noun keeps its plural, which is why "times" survives.
+            None if crate::lexicon::offers(&lower, Tag::Adverb)
+                && !crate::lexicon::offers(&lower, Tag::Noun(crate::tag::Number::Plural)) => {}
             // English does not put one inflection on top of another. A word already carrying a
             // verbal ending has no plural to offer, and marking it stacks a second: "summed"
             // gives "summeds", which has the shape of a plural and so passes every test that
@@ -394,6 +401,19 @@ mod tests {
     use super::{apply, forms, repair};
     use crate::check::check;
     use crate::grammar::Sentence;
+
+    #[test]
+    fn an_adverb_is_not_given_a_plural() {
+        // "correctly" gave "correctlies" and "everywhere" gave "everywheres", both offered as
+        // repairs on a real repository. Neither is a word.
+        for word in ["correctly", "everywhere", "elsewhere", "quickly"] {
+            assert!(
+                !forms(word, false).iter().any(|form| form.ends_with('s')),
+                "{word} was given a plural"
+            );
+        }
+        assert!(forms("file", false).contains(&"files".to_owned()));
+    }
 
     #[test]
     fn no_word_is_offered_a_second_inflection() {

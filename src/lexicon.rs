@@ -366,6 +366,46 @@ const IRREGULAR_NOUNS: &[(&str, Number)] = &[
     ("analyses", Number::Plural),
 ];
 
+/// Singular nouns that end in "s", which no rule tells apart from a plural.
+///
+/// Stripping the ending is how a plural is read, and it answers "widgets" without the word being
+/// listed anywhere. It also answers "gas", because "ga" plus the plural spelling is "gas" and
+/// nothing in the letters says "ga" is not a word. The result was "The gas is hot." carrying a
+/// subject-verb fault, and a field named `needs_gas` reported as a plural name over a singular
+/// type. These are the words where the guess is wrong, and they are a closed class: English has
+/// coined almost no new ones, so the list does not grow with the vocabulary the way a list of
+/// plurals would.
+const SINGULAR_S_NOUNS: &[&str] = &[
+    "gas",
+    "bias",
+    "lens",
+    "status",
+    "basis",
+    "crisis",
+    "axis",
+    "thesis",
+    "virus",
+    "census",
+    "campus",
+    "radius",
+    "surplus",
+    "corpus",
+    "consensus",
+    "bonus",
+    "atlas",
+    "canvas",
+    "chaos",
+    "iris",
+    "tennis",
+    "glass",
+    "loss",
+    "success",
+    "excess",
+    "illness",
+    "emphasis",
+    "apparatus",
+];
+
 /// Nouns that take the same form in both numbers, so only context decides.
 ///
 /// "data" is here rather than among the irregulars because both "this data is" and "these data
@@ -539,6 +579,11 @@ const BARE_ADVERBS: &[&str] = &[
     "now",
     "then",
     "here",
+    "everywhere",
+    "somewhere",
+    "anywhere",
+    "nowhere",
+    "elsewhere",
     "there",
     "well",
     "almost",
@@ -911,6 +956,9 @@ fn listed(key: &str) -> Option<Vec<Tag>> {
             tags.push(Tag::Noun(*number));
         }
     }
+    if SINGULAR_S_NOUNS.contains(&key) {
+        tags.push(Tag::Noun(Number::Singular));
+    }
     if INVARIANT_NOUNS.contains(&key) {
         tags.push(Tag::Noun(Number::Singular));
         tags.push(Tag::Noun(Number::Plural));
@@ -1066,6 +1114,17 @@ mod tests {
 
     fn tags(word: &str) -> Reported<Vec<Tag>> {
         ask(&Lexicon, &tokenise(word).remove(0)).expect("a word is a coherent question")
+    }
+
+    #[test]
+    fn a_singular_noun_ending_in_s_is_not_read_as_a_plural() {
+        let Reported::Known(gas) = tags("gas") else {
+            panic!("gas is listed")
+        };
+        assert!(gas.contains(&Tag::Noun(Number::Singular)));
+        let sentence = "The gas is hot.";
+        let read = crate::register::read(sentence);
+        assert!(read.iter().all(|(_, report)| report.faults.is_empty()));
     }
 
     #[test]

@@ -49,18 +49,18 @@ fn main() {
             }
         }
     }
-    println!(
+    clarity::say!(
         "units {units}, unknown words {}, faults {}",
         unknown.len(),
         faults.len()
     );
     for (rule, count) in &tally {
-        println!("rule {count:4} {rule}");
+        clarity::say!("rule {count:4} {rule}");
     }
     for (word, count) in &unknown {
-        println!("unknown {word} x{count}");
+        clarity::say!("unknown {word} x{count}");
     }
     for fault in &faults {
-        println!("fault {fault}");
+        clarity::say!("fault {fault}");
     }
 }

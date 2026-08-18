@@ -651,3 +651,25 @@ act, so the grammar cannot choose between them either. Requiring the listing wou
 "Evaluates", "Records" and "Parses" along with the mistakes, and requiring a verb-forming ending
 would keep "Speciates" and "Hydrolyzes" but still lose the rest. A rule that costs more than it
 saves is not an improvement.
+
+## Three defects a green suite could not see
+
+Running the whole tool over an unseen repository to write a report found three faults that every
+test had passed over.
+
+Output piped to `head` ended the run in a crash. When the reader closes the pipe the next write
+fails, and the print macros treat a failed write as a fatal error. A reader who has stopped
+reading is the ordinary
+end of a report, so writing now goes through one place that exits quietly instead.
+
+A singular noun ending in "s" was read as a plural. Number is derived from spelling, and stripping
+the "s" from "gas" gives "ga", whose plural spells "gas" again, so the round trip licensed it. It
+made `The gas is hot.` carry a subject-verb fault and a field named `needs_gas` a naming finding.
+These words are a closed class in English, so they are listed.
+
+An adverb was given a plural: "correctly" became "correctlies" and "everywhere" became
+"everywheres". English does not inflect an adverb for number, and the rule is no longer asked for
+a word the lexicon reads only as one.
+
+None of the three was reachable from the crate's own tests, because a test asks the engine whether
+it agrees with itself. Reading real output is what found all three.

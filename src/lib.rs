@@ -38,6 +38,7 @@ pub mod document;
 pub mod frame;
 pub mod grammar;
 pub mod lexicon;
+pub mod out;
 pub mod prose;
 pub mod register;
 pub mod repair;

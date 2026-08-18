@@ -44,7 +44,7 @@ fn main() {
             swaps(&blocks)
         };
         for (at, was, now, unit) in &swaps {
-            println!("{path}:{at} {was} -> {now}\n  in {unit}");
+            clarity::say!("{path}:{at} {was} -> {now}\n  in {unit}");
         }
         if !swaps.is_empty() {
             mended += swaps.len();
@@ -60,9 +60,9 @@ fn main() {
     let how = if write { "corrected" } else { "correctable" };
     let swapped = plural(mended, "word");
     let over = plural(paths.len(), "file");
-    println!("{swapped} {how} across {touched} of {over}");
+    clarity::say!("{swapped} {how} across {touched} of {over}");
     if !write && mended > 0 {
-        println!("run again with --write to apply them");
+        clarity::say!("run again with --write to apply them");
     }
 }
 
@@ -295,7 +295,7 @@ fn propose(path: &str, blocks: &[Vec<(usize, String)>]) {
         let core = condense(&passage);
         let kept = core.text();
         if kept.split_whitespace().count() < passage.split_whitespace().count() {
-            println!("{path}:{at} condense\n  was {passage}\n  now {kept}");
+            clarity::say!("{path}:{at} condense\n  was {passage}\n  now {kept}");
         }
     }
 }

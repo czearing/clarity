@@ -702,10 +702,21 @@ pub fn reads_as(name: &str) -> Option<Number> {
     // list is not a mistake. The lexicon offering both readings is what that looks like, so the
     // question is dropped rather than answered wrongly. Missing a finding costs a line left
     // alone; a false one costs a name that was already right.
-    if crate::lexicon::offers(last, crate::tag::Tag::Noun(crate::tag::Number::Plural))
-        && crate::lexicon::offers(last, crate::tag::Tag::Noun(crate::tag::Number::Singular))
-    {
+    let plural = crate::lexicon::offers(last, crate::tag::Tag::Noun(crate::tag::Number::Plural));
+    let singular =
+        crate::lexicon::offers(last, crate::tag::Tag::Noun(crate::tag::Number::Singular));
+    if plural && singular {
         return None;
+    }
+    // A word the lexicon knows is answered by the lexicon, because spelling is only a guess at
+    // number and it guesses badly on a singular noun that ends in s. "gas" over a `bool` was
+    // reported as a plural name given a singular type; so were "bias", "lens" and "status". The
+    // morphology is still what reads a coined name, which is the case no lexicon can cover.
+    if singular {
+        return Some(Number::One);
+    }
+    if plural {
+        return Some(Number::Many);
     }
     if crate::repair::is_plural(last) {
         Some(Number::Many)

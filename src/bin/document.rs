@@ -45,7 +45,7 @@ fn main() {
                 for found in &piece.facts {
                     if let Fact::Misnumbered(name, had, wanted) = &found.fact {
                         names += 1;
-                        println!(
+                        clarity::say!(
                             "{path}:{} {name} is {} and its type is {}",
                             piece.line,
                             had.says(),
@@ -57,12 +57,13 @@ fn main() {
             if noise {
                 if piece.public && says_nothing(piece) {
                     empty += 1;
-                    println!(
+                    clarity::say!(
                         "{path}:{} {} says nothing the code does not",
-                        piece.line, piece.name
+                        piece.line,
+                        piece.name
                     );
                     for line in &piece.doc {
-                        println!("    /// {line}");
+                        clarity::say!("    /// {line}");
                     }
                 }
                 continue;
@@ -78,8 +79,8 @@ fn main() {
             if writing {
                 edits.push((at, marked(&comment, piece.indent)));
             } else {
-                println!("{path}:{at}");
-                print!("{}", marked(&comment, 4));
+                clarity::say!("{path}:{at}");
+                clarity::put!("{}", marked(&comment, 4));
             }
         }
         if writing && !edits.is_empty() {
@@ -97,13 +98,13 @@ fn main() {
     }
 
     if noise {
-        println!("items {items}, comments saying nothing {empty}");
+        clarity::say!("items {items}, comments saying nothing {empty}");
     } else if naming {
-        println!("items {items}, names disagreeing with their type {names}");
+        clarity::say!("items {items}, names disagreeing with their type {names}");
     } else if writing {
-        println!("items {items}, comments written {proposed}, files touched {touched}");
+        clarity::say!("items {items}, comments written {proposed}, files touched {touched}");
     } else {
-        println!("items {items}, comments proposed {proposed}");
+        clarity::say!("items {items}, comments proposed {proposed}");
     }
 }
 
