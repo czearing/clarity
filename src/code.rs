@@ -449,12 +449,17 @@ impl<'ast> syn::visit::Visit<'ast> for Stopping {
             return;
         }
         if node.method == "expect" {
-            if let syn::Expr::Lit(syn::ExprLit {
+            if let Some(syn::Expr::Lit(syn::ExprLit {
                 lit: syn::Lit::Str(words),
                 ..
-            }) = &node.args[0]
+            })) = node.args.first()
             {
-                self.keep(Halt::Says(words.value()));
+                // The words are not cut where a value would go, as a message written by hand is.
+                // What is handed to `expect` is not a format, so a brace in it is a brace, and it
+                // is what the program will really print.
+                if let Some(words) = quotable(words.value().trim()) {
+                    self.keep(Halt::Says(words));
+                }
             }
         }
         syn::visit::visit_expr_method_call(self, node);
@@ -469,11 +474,22 @@ fn said(part: Option<&proc_macro2::TokenStream>) -> Option<String> {
     };
     let quoted = written.to_string();
     let inner = quoted.strip_prefix('"')?.strip_suffix('"')?;
-    // A message written for a person often ends where a value is put in. What comes before that is
-    // the part the author wrote, and the part a caller can be told.
-    let words = inner.split("{}").next().unwrap_or(inner).trim();
-    let words = words.trim_end_matches([':', ',', '-']).trim();
-    (!words.is_empty()).then(|| words.to_string())
+    // A message written for a person often ends where a value is put into it. What comes before
+    // that is the part the author wrote, and the part a caller can be told. The cut is made at the
+    // brace rather than at an empty pair of them, because a value can be put in by name or with a
+    // format of its own, and neither of those is anything to show a reader.
+    let words = inner.split('{').next().unwrap_or(inner).trim();
+    let words = words.trim_end_matches([':', ',', '-', ';']).trim();
+    quotable(words)
+}
+
+/// Words fit to go inside a code span, or nothing.
+///
+/// The words are written back between backticks, so words carrying a backtick of their own would
+/// close the span early and leave the rest as prose. There is nothing to be gained by repairing
+/// that, and a comment is never worth a wrong one, so such words are left unsaid.
+fn quotable(words: &str) -> Option<String> {
+    (!words.is_empty() && !words.contains('`')).then(|| words.to_string())
 }
 
 /// The arguments of a macro, split where the commas between them are.
@@ -502,7 +518,12 @@ fn parted(tokens: &proc_macro2::TokenStream) -> Vec<proc_macro2::TokenStream> {
 /// exist because the tokens were taken apart are closed up again.
 fn tight(tokens: proc_macro2::TokenStream) -> String {
     let mut out = String::new();
+    // Whether the next thing follows straight on, what came last was something an operator can
+    // work on, and whether the run of marks being written started after one of those.
     let mut joined = true;
+    let mut operand = false;
+    let mut ran_after_operand = false;
+    let mut ran_on = false;
     for tree in tokens {
         match tree {
             proc_macro2::TokenTree::Group(inner) => {
@@ -512,26 +533,53 @@ fn tight(tokens: proc_macro2::TokenStream) -> String {
                     proc_macro2::Delimiter::Brace => ("{", "}"),
                     proc_macro2::Delimiter::None => ("", ""),
                 };
+                // Brackets straight after a name are a call or an index and belong to the name.
+                // Brackets after an operator are what it works on, and stand apart from it.
+                if !operand && !joined && !out.is_empty() {
+                    out.push(' ');
+                }
                 out.push_str(open);
                 out.push_str(&tight(inner.stream()));
                 out.push_str(close);
                 joined = false;
+                operand = true;
+                ran_on = false;
             }
             proc_macro2::TokenTree::Punct(mark) => {
                 let letter = mark.as_char();
-                let held = matches!(letter, '.' | ',' | ';' | '!' | '?' | '&' | '#');
-                if !joined && !held {
+                let alone = mark.spacing() == proc_macro2::Spacing::Alone;
+                // A bang straight after a name calls a macro, and one that carries on into another
+                // mark is half of an operator. Which one this is can be read off the mark itself.
+                let calling = letter == '!'
+                    && alone
+                    && out.ends_with(|letter: char| letter.is_alphanumeric() || letter == '_');
+                let held = calling || matches!(letter, '.' | ',' | ';' | '?' | ':');
+                // A run of marks is one operator. Whether it works on what follows it alone is
+                // settled by what stood before the run, not by what stands before this mark, so
+                // the minus in "a == -1" is read as a sign and the one in "a - 1" is not.
+                if !ran_on {
+                    ran_after_operand = operand;
+                }
+                if !held && !joined && !out.is_empty() && !out.ends_with(['(', '[', '{']) {
                     out.push(' ');
                 }
                 out.push(letter);
-                joined = held || mark.spacing() == proc_macro2::Spacing::Joint;
+                joined = calling || matches!(letter, '.' | ':') || !alone || !ran_after_operand;
+                if matches!(letter, ',' | ';') {
+                    out.push(' ');
+                    joined = true;
+                }
+                operand = false;
+                ran_on = !alone;
             }
             other => {
-                if !joined {
+                if !joined && !out.is_empty() {
                     out.push(' ');
                 }
                 out.push_str(&other.to_string());
                 joined = false;
+                operand = true;
+                ran_on = false;
             }
         }
     }
@@ -661,7 +709,7 @@ pub fn reads_as(name: &str) -> Option<Number> {
 
 #[cfg(test)]
 mod tests {
-    use super::{findings, Fact, Halt, Number};
+    use super::{findings, tight, Fact, Halt, Number};
 
     #[test]
     fn a_signature_says_whether_the_answer_can_be_missing() {
@@ -731,6 +779,110 @@ mod tests {
             .facts
             .iter()
             .any(|f| matches!(f.fact, Fact::Halts(_))));
+    }
+
+    #[test]
+    fn a_stop_asked_for_words_it_was_given_none_of_is_read_without_stopping() {
+        // `expect` with nothing handed to it still parses, so the pass meets it and must not
+        // reach for an argument that is not there.
+        let found = findings("fn get(of: Option<u8>) -> u8 { of.expect() }");
+        assert!(!found[0]
+            .facts
+            .iter()
+            .any(|f| matches!(f.fact, Fact::Halts(_))));
+    }
+
+    #[test]
+    fn a_message_is_cut_where_the_first_value_is_put_into_it() {
+        for source in [
+            r#"fn get(of: &[u8]) -> u8 { panic!("no bytes: {}", 1) }"#,
+            r#"fn get(of: &[u8]) -> u8 { panic!("no bytes: {:?}", of) }"#,
+            r#"fn get(of: &[u8]) -> u8 { panic!("no bytes: {count}") }"#,
+        ] {
+            let found = findings(source);
+            assert!(
+                found[0]
+                    .facts
+                    .iter()
+                    .any(|f| f.fact == Fact::Halts(Halt::Says("no bytes".to_string()))),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn words_that_would_close_the_span_they_are_written_in_are_left_unsaid() {
+        let found = findings(r#"fn get(of: &[u8]) -> u8 { panic!("no `bytes` here") }"#);
+        assert!(!found[0]
+            .facts
+            .iter()
+            .any(|f| matches!(f.fact, Fact::Halts(_))));
+    }
+
+    #[test]
+    fn a_check_is_written_back_the_way_it_was_written() {
+        for (source, want) in [
+            ("fn f(a: u8, b: u8) { assert!(a != b); }", "a != b"),
+            (
+                "fn f(of: &[u8]) { assert!(!of.is_empty()); }",
+                "!of.is_empty()",
+            ),
+            (
+                "fn f(n: usize) { assert!(n < std::usize::MAX); }",
+                "n < std::usize::MAX",
+            ),
+            (
+                "fn f(x: u8) { assert!(matches!(x, 1 | 2)); }",
+                "matches!(x, 1 | 2)",
+            ),
+            ("fn f(a: u8) { assert!(a == -1); }", "a == -1"),
+        ] {
+            let found = findings(source);
+            assert!(
+                found[0]
+                    .facts
+                    .iter()
+                    .any(|f| f.fact == Fact::Halts(Halt::Unless(want.to_string()))),
+                "{source} gave {:?}",
+                found[0].facts
+            );
+        }
+    }
+
+    #[test]
+    fn what_is_written_back_is_the_check_that_was_read() {
+        // Closing up the spaces a tokeniser leaves is only safe if it changes nothing but spacing.
+        // Rust settles that: what is written back is handed to the parser again, and it has to
+        // come out as the same expression.
+        for check in [
+            "a != b",
+            "!of.is_empty()",
+            "n < std::usize::MAX",
+            "matches!(x, 1 | 2)",
+            "a == -1",
+            "values.len() == n * n",
+            "(a + b) * c",
+            "a && b || !c",
+            "v[0] >= v[1]",
+            "self.mass.unwrap_or(0.0) > 0.0",
+            "x as u8 == 1",
+            "&a == &b",
+            "Some(x) != None",
+            "a.b().c(d, e)",
+            "f(-1, 2)",
+            "1.0_f64 / 2.0",
+            "*p == 1",
+        ] {
+            let read: syn::Expr = syn::parse_str(check).expect("the check is written in Rust");
+            let written = tight(quote::ToTokens::to_token_stream(&read));
+            let again: syn::Expr =
+                syn::parse_str(&written).unwrap_or_else(|_| panic!("{check} became {written}"));
+            assert_eq!(
+                quote::ToTokens::to_token_stream(&read).to_string(),
+                quote::ToTokens::to_token_stream(&again).to_string(),
+                "{check} became {written}"
+            );
+        }
     }
 
     #[test]

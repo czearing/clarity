@@ -559,12 +559,44 @@ nothing. A word is now charged against the shortest rival saying the same thing,
 charge was always described as doing. Length now separates two ways of saying one thing and can no
 longer silence the only sentence that says it.
 
+## What is quoted from the code is not graded as prose
+
+Every sentence the pass writes is read back by the engine and thrown away if the engine faults it.
+A sentence naming a cause quotes the code, and code is not English. A bound written against the
+largest number a machine word holds is four words to a tokeniser, and a fault to every rule that
+expects them to agree:
+
+```text
+Panics unless `n < std::usize::MAX` holds.
+```
+
+Graded whole, that sentence was dropped, and it was true and the only warning its caller had.
+
+So a span between backticks is stood in for by one word while the sentence is read, and written out
+untouched. The frame around the span is still held to the whole of English, which is the part that
+can be wrong. This narrows the guarantee and is worth saying plainly: the engine no longer vouches
+for what is inside a span. What vouches for that is Rust. What is written back is handed to the
+parser again in a test, and seventeen checks covering calls, indexing, casts, references, macros,
+unary signs and precedence all come back as the expression they went in as.
+
+Three faults were found by looking for them rather than by a gate. `expect` called with nothing
+handed to it parses, and reaching for its first argument stopped the pass outright. A message was
+cut at an empty pair of braces, so a value put in by name or with a format of its own was left in
+the comment. And a sign written after another operator was spaced as though it joined two things:
+
+```text
+a == -1    ->    a == - 1
+```
+
+Each is now a test. The gates were green through all three,
+because a gate compares the pass against itself and none of these was a disagreement with itself.
+
 ## Reporting comments that say nothing
 
 The same question, asked of comments someone already wrote. `document --noise` reports a doc
 comment whose every word carrying a point is a word of the name, of an argument, or of the type
-answered with. Endings that only mark number or person are taken off both sides first, so calling
-a thing what it is called counts as saying it again however the sentence had to inflect it.
+answered with. Endings that only mark number or person come off both sides first, so a comment
+that calls a thing what it is called says it again however the sentence had to inflect it.
 
 Nothing is deleted. The pass can be sure it found no word of the author's in a comment, which is a
 reason to look and not a verdict, and a comment belongs to whoever wrote it.

@@ -380,13 +380,35 @@ fn sound(text: &str) -> Option<String> {
     sound_in(text, crate::register::Register::STRICT)
 }
 
+/// A sentence with what it quotes from the code stood in for.
+///
+/// A span between backticks is code, not English, and reading it as English asks the grammar a
+/// question it has no answer to: `n < std::usize::MAX` is four words to a tokeniser and a fault to
+/// every rule that expects them to agree. What is being checked is the sentence built around the
+/// span, so the span is replaced by one word standing where it stands, and the sentence is graded
+/// on the part of it that is prose. This is the same reasoning that keeps the heading out of the
+/// grammar's way, applied one level down.
+fn spanless(text: &str) -> String {
+    let mut out = String::new();
+    let mut inside = false;
+    for part in text.split('`') {
+        if inside {
+            out.push_str("it");
+        } else {
+            out.push_str(part);
+        }
+        inside = !inside;
+    }
+    out
+}
+
 /// A sentence the engine can read under `register`, or nothing.
 ///
 /// A summary line is a noun phrase by convention, so it is read under a register that lets the
 /// predicate go. Everything else is held to the whole of English. The register is what says which,
 /// so the difference is a convention the engine already knows rather than an exception here.
 fn sound_in(text: &str, register: crate::register::Register) -> Option<String> {
-    let sentence = Sentence::read(text);
+    let sentence = Sentence::read(&spanless(text));
     let report = crate::check::check_in(&sentence, register);
     if report.is_clean() {
         Some(text.to_owned())
@@ -445,7 +467,7 @@ fn capitalised(word: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{spelled, written};
+    use super::{spanless, spelled, written};
     use crate::code::findings;
 
     fn comment(source: &str) -> Option<String> {
@@ -489,6 +511,31 @@ mod tests {
             comment("pub fn ratio(&self) -> f64 { self.mass.unwrap() }"),
             None
         );
+    }
+
+    #[test]
+    fn a_check_that_does_not_read_as_english_is_still_written() {
+        // The words inside a span are code. Grading them as prose faults every one of these and
+        // would throw away a comment that is true and the only warning a caller gets.
+        for source in [
+            "pub fn take(&self, n: usize) -> usize { assert!(n < std::usize::MAX); n }",
+            "pub fn take(&self, x: u8) -> u8 { assert!(matches!(x, 1 | 2)); x }",
+            "pub fn take(&self, a: u8, b: u8) -> u8 { assert!(a != b); a }",
+        ] {
+            assert!(comment(source).is_some(), "{source}");
+        }
+    }
+
+    #[test]
+    fn what_stands_in_for_a_span_is_only_what_is_graded() {
+        // The span is replaced for the reading and never in what is written.
+        assert_eq!(
+            spanless("Panics unless `a != b` holds."),
+            "Panics unless it holds."
+        );
+        let found =
+            comment("pub fn take(&self, a: u8, b: u8) -> u8 { assert!(a != b); a }").unwrap();
+        assert!(found.contains("`a != b`"), "{found}");
     }
 
     #[test]
