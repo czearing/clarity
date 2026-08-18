@@ -155,6 +155,7 @@ MIT or Apache-2.0.
 document src/**/*.rs            # report what it would write
 document --write src/**/*.rs    # write it
 document --names src/**/*.rs    # names whose number disagrees with their type
+document --noise src/**/*.rs    # comments that say nothing the declaration does not
 ```
 
 The pass reads each file with `syn` and gathers what the code proves: whether a call answers with

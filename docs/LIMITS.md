@@ -410,7 +410,8 @@ seconds for the same work, because a source file is mostly code.
 ## Writing doc comments from the code
 
 The `document` pass reads a Rust file with `syn`, gathers what the code proves about each public
-item, and writes a doc comment for the items that have none. It never reads the code's meaning.
+item, and writes a doc comment for the few items whose code proves something the declaration does
+not already show. It never reads the code's meaning.
 It reads the signature and the shape of the body. Every finding carries a price that says how sure
 it is. A signature states its facts outright and they are cheap. A fact that holds on every path
 through a body costs more. A fact that holds on only some paths costs most. A line is written when
@@ -424,8 +425,8 @@ Two things bound what it can say wrong.
 
 The grammar is the first of them. Every sentence this pass writes goes back through the same engine
 that reads the repository, and the engine throws away any sentence it faults. Adding a rule to
-the grammar therefore tightens what may be generated without a line changing here. On book-cook-ai
-the 1767 lines it wrote read back with 0 faults and 0 unknown words.
+the grammar therefore tightens what may be generated without a line changing here. Read back over
+the unseen repository, what it writes carries 0 faults and 0 unknown words.
 
 The edit is the second of them. This pass can express one edit and no other, which is to insert a run
 of `///` lines at the start of a line. Touching code is not something it declines to do. Touching
@@ -466,9 +467,51 @@ book-cook-ai the pass reports 748 across 4541 items.
 
 ## Speed of the doc pass
 
-4541 items across 841 files in 4.4 seconds, including generating and reading back 1646 comments.
+5010 items across 841 files in 5.2 seconds, including generating and reading back every comment
+considered before all but four were left.
 The grammar is the slow part of this repository and the doc pass only reads the short sentences
 it writes, so it costs far less than a pass over prose.
+
+## Nothing is written that the declaration already says
+
+A comment a reader could have written from the line under it is worse than no comment. It costs a
+reading and returns what was already there, and it cannot be told apart from a comment that was
+checked. So a sentence has to earn its place by saying what the declaration does not, and most
+cannot.
+
+A summary is written from the name and from nothing else: the words are the name's words, put in
+an order English can read. So it can never carry anything new, and it is offered to the search
+having earned nothing. That is where "The acid system." above a thing called `AcidSystem` went.
+
+A finding earns its place by where it was found, which the price already records. A signature is
+read straight off the declaration the comment would sit above, so a sentence carrying it tells a
+reader what they are looking at. A body has to be opened and followed, so a sentence carrying it
+saves the reading it would have taken. Only the second kind is written.
+
+The effect is severe and it is the point. On the unseen repository this fell from 1948 comments
+over 5010 items to 4. Every one of the four says the same thing, that the item can stop the
+program, and every one of them is a thing a caller has to know and cannot see. The 1944 that went
+were the name spelled out again, or the return type spelled out again, above a declaration that
+already said both.
+
+What this measures is how little of what the pass knows is worth writing down, not how little it
+knows. Widening it means finding more in bodies, because that is the only place a reader is not
+already looking.
+
+## Reporting comments that say nothing
+
+The same question, asked of comments someone already wrote. `document --noise` reports a doc
+comment whose every word carrying a point is a word of the name, of an argument, or of the type
+answered with. Endings that only mark number or person are taken off both sides first, so calling
+a thing what it is called counts as saying it again however the sentence had to inflect it.
+
+Nothing is deleted. The pass can be sure it found no word of the author's in a comment, which is a
+reason to look and not a verdict, and a comment belongs to whoever wrote it.
+
+The test is deliberately generous, since one word of the author's own is enough to keep a comment.
+That is the safe direction to be wrong in: it will miss padding, and it will not tell anyone to
+delete something that says something. Over 4271 doc comment lines on the unseen repository it
+reports none, and over a file written to be redundant it reports every line.
 
 ## Names the doc pass still reads as acts when they are not
 

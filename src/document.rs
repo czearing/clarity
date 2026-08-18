@@ -17,13 +17,23 @@
 //! that carries the most is the one kept, so a function the code says little about gets a short
 //! comment rather than a confident one.
 //!
+//! Most items get none at all, and that is the point. A comment a reader could have written from
+//! the declaration under it is worse than nothing, because it costs a reading and returns what was
+//! already there. So a sentence earns its place only by saying what the declaration does not: a
+//! summary has to find a word the name had not, and a finding has to have come from the body
+//! rather than from the signature sitting in plain sight. Nothing else is written.
+//!
 //! ```
 //! use clarity::code::findings;
 //! use clarity::document::written;
 //!
-//! let source = "pub fn holds(&self) -> bool { true }";
-//! let comment = written(&findings(source)[0]);
-//! assert!(comment.is_some());
+//! // Nothing here that the declaration does not already say, so nothing is written.
+//! let plain = "pub fn holds(&self) -> bool { true }";
+//! assert!(written(&findings(plain)[0]).is_none());
+//!
+//! // This one can stop the program, which a reader would have to open the body to find out.
+//! let stops = "pub fn holds(&self) -> bool { self.value.unwrap() }";
+//! assert!(written(&findings(stops)[0]).is_some());
 //! ```
 
 use crate::code::{Fact, Piece};
@@ -42,6 +52,8 @@ const SAID: f64 = 12.0;
 struct Line {
     text: String,
     price: f64,
+    /// Whether it says anything the declaration under it does not already show.
+    told: bool,
 }
 
 /// The doc comment for a piece of code, or nothing where the code licensed nothing.
@@ -61,35 +73,41 @@ pub fn written(piece: &Piece) -> Option<String> {
 ///
 /// This is the dynamic program. Each candidate sentence may be taken or left, taking it costs its
 /// words and its finding's price and earns what saying something is worth, and the run of choices
-/// with the lowest total is the comment. Ordering is not decided here: a summary has to come
-/// first, so it is held out of the search and the rest follow in the order the code offered them.
+/// with the lowest total is the comment. A sentence that only says again what the declaration
+/// under it already shows earns nothing, so its words are pure cost and the search leaves it. That
+/// is the whole of the restraint, and it is the same arithmetic as before rather than a rule laid
+/// over it. Ordering is not decided here: a summary would have to come first, so it is offered
+/// first and the rest follow in the order the code offered them.
 fn chosen(piece: &Piece) -> Vec<String> {
-    let Some(summary) = summary(piece) else {
-        return Vec::new();
-    };
-    let mut kept = vec![summary];
-    let rest: Vec<Line> = piece.facts.iter().filter_map(line).collect();
-    let mut taken: Vec<&Line> = Vec::new();
-    let mut spent = 0.0;
-    for candidate in &rest {
-        #[allow(clippy::cast_precision_loss)]
-        let cost = candidate.price + candidate.text.split_whitespace().count() as f64 * WORD - SAID;
-        if cost < 0.0 && !taken.iter().any(|had| had.text == candidate.text) {
-            taken.push(candidate);
-            spent += cost;
-        }
+    let mut offered: Vec<Line> = Vec::new();
+    if let Some(text) = summary(piece) {
+        offered.push(Line {
+            text,
+            price: crate::code::SIGNED,
+            told: false,
+        });
     }
-    let _ = spent;
-    for line in taken {
-        kept.push(line.text.clone());
+    offered.extend(piece.facts.iter().filter_map(line));
+    let mut kept: Vec<String> = Vec::new();
+    for candidate in &offered {
+        #[allow(clippy::cast_precision_loss)]
+        let words = candidate.text.split_whitespace().count() as f64 * WORD;
+        let earned = if candidate.told { SAID } else { 0.0 };
+        if candidate.price + words - earned < 0.0 && !kept.contains(&candidate.text) {
+            kept.push(candidate.text.clone());
+        }
     }
     kept
 }
 
 /// The first line, which says what the thing is.
 ///
-/// A summary is not optional, so where none can be written the whole comment is refused. That is
-/// what keeps the pass from producing a comment made entirely of caveats.
+/// Every open-class word in it comes from the name, because that is the only place it has to draw
+/// from: the words are the name's words, put in an order English can read and given an article. So
+/// it can never tell a reader anything the declaration under it does not, and it reaches the search
+/// having earned nothing. It is still written, because that is what makes the claim checkable
+/// rather than assumed, and because a further source of words would change what it earns here and
+/// nowhere else.
 fn summary(piece: &Piece) -> Option<String> {
     let words = spelled(&piece.name);
     if words.is_empty() {
@@ -189,6 +207,64 @@ fn acting(words: &[String]) -> Option<String> {
     })
 }
 
+/// Whether a comment already written says anything the declaration does not.
+///
+/// The same question the search asks of a sentence it might write, asked of a sentence someone
+/// already wrote. A declaration carries its own vocabulary: the words of the name, the names the
+/// author gave the arguments, and the type answered with. A comment built only from those words
+/// has told the reader nothing they did not have, however many sentences it took, and is worth
+/// deleting rather than keeping.
+///
+/// Only the words that carry a point are weighed, because the closed class is grammar and a
+/// comment does not earn its place by having put an article in front of the name. The test is
+/// deliberately generous: one word of the author's own is enough to keep it, so a comment saying
+/// anything at all is left alone.
+///
+/// ```
+/// use clarity::code::findings;
+/// use clarity::document::says_nothing;
+///
+/// let echo = "/// The acid system.\npub struct AcidSystem { pub ph: f64 }";
+/// assert!(says_nothing(&findings(echo)[0]));
+///
+/// let told = "/// The pH must be measured at 25 C.\npub struct AcidSystem { pub ph: f64 }";
+/// assert!(!says_nothing(&findings(told)[0]));
+/// ```
+#[must_use]
+pub fn says_nothing(piece: &Piece) -> bool {
+    if piece.doc.is_empty() {
+        return false;
+    }
+    let mut shown: Vec<String> = spelled(&piece.name);
+    for found in &piece.facts {
+        match &found.fact {
+            Fact::Takes(names) => shown.extend(names.iter().flat_map(|name| spelled(name))),
+            Fact::Answers(head) => shown.extend(spelled(head)),
+            _ => {}
+        }
+    }
+    let known: Vec<String> = shown.iter().map(|word| stem(word)).collect();
+    !piece
+        .doc
+        .iter()
+        .flat_map(|line| line.split_whitespace())
+        .map(|word| {
+            word.trim_matches(|letter: char| !letter.is_alphanumeric())
+                .to_lowercase()
+        })
+        .filter(|word| !word.is_empty() && !crate::lexicon::is_closed(word))
+        .any(|word| !known.contains(&stem(&word)))
+}
+
+/// A word with any ending that only marks number or person taken off, where one can be.
+///
+/// A comment names a thing as the code names it, and English changes the ending to fit the sentence
+/// around it. Both sides are compared with such an ending removed, because otherwise every plural
+/// would count as a new word.
+fn stem(word: &str) -> String {
+    crate::repair::plain(word).unwrap_or_else(|| word.to_owned())
+}
+
 /// A noun phrase naming the thing, used where nothing can be said about what it does.
 ///
 /// Number is not asked about, because English writes "the" in front of one thing and of many
@@ -202,6 +278,12 @@ fn phrase(words: &[String]) -> String {
 /// A finding is written out only when it says something the signature does not already show.
 /// Repeating the signature in words is what makes a generated comment worthless, so a finding that
 /// only restates the types has no sentence and cannot be chosen.
+///
+/// What separates a sentence worth writing from one that is not is already recorded, in what the
+/// finding cost to be sure of. A signature is read straight off the declaration the comment will
+/// sit above, so a reader has it either way and a sentence carrying it earns nothing. A body has
+/// to be opened and followed, so a reader does not have it, and a sentence carrying it is the
+/// reason to write a comment at all.
 fn line(found: &crate::code::Finding) -> Option<Line> {
     let text = match &found.fact {
         Fact::MayBeAbsent => "Answers with nothing where it finds none.",
@@ -213,6 +295,7 @@ fn line(found: &crate::code::Finding) -> Option<Line> {
     sound(text).map(|text| Line {
         text,
         price: found.price,
+        told: found.price > crate::code::SIGNED,
     })
 }
 
@@ -304,25 +387,32 @@ mod tests {
     }
 
     #[test]
-    fn a_call_answering_yes_or_no_is_summarised_as_a_question() {
-        let found = comment("pub fn holds(&self) -> bool { true }").unwrap();
-        assert!(found.starts_with("Whether"), "{found}");
+    fn nothing_is_written_where_the_declaration_already_says_it_all() {
+        // Every one of these is fully described by the line it would sit above: a name, a
+        // receiver, and a return type. A comment here would cost a reading and return nothing.
+        for source in [
+            "pub struct AcidSystem { pub ph: f64 }",
+            "pub fn holds(&self) -> bool { true }",
+            "impl T { pub fn clear(&mut self) {} }",
+            "pub fn read_the_file(path: &str) -> Option<String> { None }",
+            "pub fn equilibrium(&self) -> Result<f64, Bad> { Ok(1.0) }",
+        ] {
+            assert_eq!(comment(source), None, "{source}");
+        }
     }
 
     #[test]
-    fn a_change_to_the_receiver_is_written_because_a_reader_would_want_it() {
-        // "called on" is what a Rust reader would say, but the engine reads its own prose and
-        // marks a sentence that echoes the name it just wrote, so the receiver is "used on".
-        let found = comment("impl T { pub fn clear(&mut self) {} }").unwrap();
-        assert!(found.contains("Changes what it is used on"), "{found}");
+    fn what_only_the_body_shows_is_written_because_a_reader_would_have_to_look() {
+        let found = comment("pub fn ratio(&self) -> f64 { self.mass.unwrap() }").unwrap();
+        assert_eq!(found, "This can stop the program.");
     }
 
     #[test]
     fn every_sentence_written_is_one_the_engine_can_read() {
         for source in [
-            "pub fn holds(&self) -> bool { true }",
-            "impl T { pub fn clear(&mut self) {} }",
-            "pub fn read_the_file(path: &str) -> Option<String> { None }",
+            "pub fn holds(&self) -> bool { self.value.unwrap() }",
+            "impl T { pub fn clear(&mut self) { panic!() } }",
+            "pub fn read_the_file(path: &str) -> Option<String> { open(path).unwrap() }",
         ] {
             let found = comment(source).unwrap();
             for line in found.lines() {

@@ -118,6 +118,8 @@ pub struct Piece {
     pub indent: usize,
     /// Whether the item already carries a doc comment.
     pub documented: bool,
+    /// The doc comment it already carries, a line at a time, as the author wrote it.
+    pub doc: Vec<String>,
     /// What the code says about it.
     pub facts: Vec<Finding>,
 }
@@ -147,7 +149,7 @@ fn walk(item: &syn::Item, source: &str, out: &mut Vec<Piece>) {
                 &function.vis,
                 function.span(),
                 source,
-                has_doc(&function.attrs),
+                doc_of(&function.attrs),
                 body_facts(&function.block.stmts),
             ));
         }
@@ -159,7 +161,7 @@ fn walk(item: &syn::Item, source: &str, out: &mut Vec<Piece>) {
                         &function.vis,
                         function.span(),
                         source,
-                        has_doc(&function.attrs),
+                        doc_of(&function.attrs),
                         body_facts(&function.block.stmts),
                     ));
                 }
@@ -173,6 +175,7 @@ fn walk(item: &syn::Item, source: &str, out: &mut Vec<Piece>) {
             }
         }
         syn::Item::Struct(record) => {
+            let written = doc_of(&record.attrs);
             let mut facts = Vec::new();
             for field in &record.fields {
                 let Some(name) = field.ident.as_ref().map(ToString::to_string) else {
@@ -196,7 +199,8 @@ fn walk(item: &syn::Item, source: &str, out: &mut Vec<Piece>) {
                 public: matches!(record.vis, Visibility::Public(_)),
                 line: record.span().start().line,
                 indent: record.span().start().column,
-                documented: has_doc(&record.attrs),
+                documented: !written.is_empty(),
+                doc: written,
                 facts,
             });
         }
@@ -210,7 +214,7 @@ fn from_fn(
     vis: &Visibility,
     span: Span,
     _source: &str,
-    documented: bool,
+    written: Vec<String>,
     mut facts: Vec<Finding>,
 ) -> Piece {
     facts.extend(signature_facts(sig));
@@ -220,7 +224,8 @@ fn from_fn(
         public: matches!(vis, Visibility::Public(_)),
         line: span.start().line,
         indent: span.start().column,
-        documented,
+        documented: !written.is_empty(),
+        doc: written,
         facts,
     }
 }
@@ -237,9 +242,28 @@ fn alters(receiver: &syn::Receiver) -> bool {
     }
 }
 
-/// Whether any of these attributes is a doc comment.
-fn has_doc(attrs: &[syn::Attribute]) -> bool {
-    attrs.iter().any(|attr| attr.path().is_ident("doc"))
+/// The doc comment these attributes carry, a line at a time.
+///
+/// The text is taken as the author wrote it, because what is being asked later is whether it says
+/// anything, and rewording it first would be answering about something the author did not write.
+fn doc_of(attrs: &[syn::Attribute]) -> Vec<String> {
+    let mut lines = Vec::new();
+    for attr in attrs {
+        if !attr.path().is_ident("doc") {
+            continue;
+        }
+        if let syn::Meta::NameValue(pair) = &attr.meta {
+            if let syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(text),
+                ..
+            }) = &pair.value
+            {
+                lines.push(text.value().trim().to_owned());
+            }
+        }
+    }
+    lines.retain(|line| !line.is_empty());
+    lines
 }
 
 /// What a signature says, which it cannot be wrong about.

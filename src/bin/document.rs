@@ -8,20 +8,26 @@
 //!
 //! Given `--names` it reports names whose number disagrees with the type they are given, which is
 //! the one thing here that is a claim about the code being wrong rather than about what it does.
+//!
+//! Given `--noise` it reports the doc comments already written that say nothing the declaration
+//! under them does not. Nothing is deleted, because a comment is the author's and the pass can
+//! only be sure it found no word of theirs in it, which is a reason to look and not a verdict.
 
 use clarity::code::{findings, Fact};
-use clarity::document::written;
+use clarity::document::{says_nothing, written};
 use std::fs;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let writing = args.iter().any(|arg| arg == "--write");
     let naming = args.iter().any(|arg| arg == "--names");
+    let noise = args.iter().any(|arg| arg == "--noise");
     let paths: Vec<&String> = args.iter().filter(|arg| !arg.starts_with("--")).collect();
 
     let mut items = 0usize;
     let mut proposed = 0usize;
     let mut names = 0usize;
+    let mut empty = 0usize;
     let mut touched = 0usize;
 
     for path in paths {
@@ -47,6 +53,19 @@ fn main() {
                         );
                     }
                 }
+            }
+            if noise {
+                if piece.public && says_nothing(piece) {
+                    empty += 1;
+                    println!(
+                        "{path}:{} {} says nothing the code does not",
+                        piece.line, piece.name
+                    );
+                    for line in &piece.doc {
+                        println!("    /// {line}");
+                    }
+                }
+                continue;
             }
             if naming || piece.documented || !piece.public {
                 continue;
@@ -86,7 +105,9 @@ fn main() {
         }
     }
 
-    if naming {
+    if noise {
+        println!("items {items}, comments saying nothing {empty}");
+    } else if naming {
         println!("items {items}, names disagreeing with their type {names}");
     } else if writing {
         println!("items {items}, comments written {proposed}, files touched {touched}");
