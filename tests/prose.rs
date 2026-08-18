@@ -74,7 +74,13 @@ fn measure() -> (usize, Vec<String>, Vec<String>) {
 }
 
 /// How much of its own prose the engine cannot yet read, as measured.
-const FAULTS: usize = 57;
+///
+/// This was 57 while a quotation closing on a full stop could leave its closing mark opening a
+/// span that ran into later paragraphs. Everything swallowed that way arrived as one enormous
+/// unit, so it was not read as sentences and could not be faulted. Bounding a block to itself
+/// ended that and nine faults that were always there became visible. None of them is new prose and
+/// none is a regression; the number was simply wrong before, in the flattering direction.
+const FAULTS: usize = 66;
 
 /// How many words of its own prose the engine cannot place, as measured.
 const UNKNOWN: usize = 0;

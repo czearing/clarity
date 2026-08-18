@@ -118,7 +118,7 @@ there is counted, held to that count in both directions, and set out in `docs/LI
 | Faulty sentences repaired to clean | 20 of 20, never more than two swaps |
 | Wasteful sentences named | 12 of 12 |
 | Passages whose conventions were recovered | 5 of 5, and the planted fault caught in each |
-| Faults left in seven hundred units of the crate's own prose | 57, bounded in both directions |
+| Faults left in seven hundred units of the crate's own prose | 66, bounded in both directions |
 
 Every example above is compiled and run as a doctest. Timings are what `cargo bench` reports for
 `benches/read.rs`; on the machine that wrote this, checking a short sentence takes about two
@@ -185,7 +185,14 @@ and thrown away if the engine faults it, so a rule added to the grammar tightens
 written with nothing changing in the generator. And the only edit it can express is inserting
 `///` lines, so touching code is not something it declines to do but something it cannot say.
 
-On a repository of 841 files it read 5010 items in 4.8 seconds and wrote three comments. `git diff`
-reported nine lines added and three removed, every one a doc comment, and the repository still
-built. Each of the three was then read by hand against the body under it and found true. Three comments
-are the whole of what 5010 items licensed, where an earlier and looser rule wrote 1948.
+On a repository of 841 files it read 5010 items in 5.9 seconds and wrote seven comments. `git diff`
+reported twenty-eight lines added and none removed, every one a doc comment, and the repository
+still built and passed its tests. Each of the seven was then read by hand against the body under it
+and found true. Those seven are the whole of what 5010 items licensed, where an earlier and looser
+rule wrote 1948.
+
+A second reader counted the same repository independently. Of six hundred and seventy-one public
+functions, fifteen can stop, and every one of the fifteen is accounted for. Ten now carry a section
+saying so. Three stop on a bare unwrap, which names no cause, so nothing is written. One answers
+with a `Result`, so its declaration already warns the caller. One was handed a message the engine
+would not vouch for as English, and a sentence it cannot read is not written.

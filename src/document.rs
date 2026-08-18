@@ -111,6 +111,9 @@ fn chosen(piece: &Piece) -> Vec<String> {
     offered.extend(piece.facts.iter().filter_map(|found| line(found, piece)));
     let mut kept: Vec<String> = Vec::new();
     for candidate in &offered {
+        if !wanted(piece, candidate) {
+            continue;
+        }
         let fewest = offered
             .iter()
             .filter(|rival| rival.about == candidate.about)
@@ -119,6 +122,9 @@ fn chosen(piece: &Piece) -> Vec<String> {
         let words = (counted(&candidate.text) - fewest) * WORD;
         let earned = if candidate.told { SAID } else { 0.0 };
         if candidate.price + words - earned < 0.0 && !kept.contains(&candidate.text) {
+            if kept.is_empty() && piece.documented {
+                kept.push(String::new());
+            }
             if let Some(head) = candidate.head {
                 kept.push(format!("# {head}"));
                 kept.push(String::new());
@@ -127,6 +133,29 @@ fn chosen(piece: &Piece) -> Vec<String> {
         }
     }
     kept
+}
+
+/// Whether an item that already carries a comment has room for this sentence.
+///
+/// An undocumented item has room for anything. A documented one is a different matter: the author
+/// wrote something, and rewriting it is not this pass's business. But carrying a comment is not
+/// the same as having said this. A sentence under its own heading is a section, and a section the
+/// author never opened is missing rather than declined — measured on one repository, ten public
+/// functions could stop and not one of their comments mentioned it, which is exactly the reader
+/// the pass exists for. Such a section is added below what the author wrote, leaving every word of
+/// it alone. A sentence with no heading has nowhere to go but the summary, which the author has
+/// already written, so it is left.
+fn wanted(piece: &Piece, candidate: &Line) -> bool {
+    if !piece.documented {
+        return true;
+    }
+    let Some(head) = candidate.head else {
+        return false;
+    };
+    !piece
+        .doc
+        .iter()
+        .any(|line| line.trim_start_matches('#').trim() == head)
 }
 
 /// How long a sentence is, counted in words.
@@ -343,6 +372,7 @@ fn line(found: &crate::code::Finding, piece: &Piece) -> Option<Line> {
                     format!("Panics unless `{left}` and `{right}` differ.")
                 }
                 Halt::Says(words) => format!("Panics with `{}`.", lowered(words)),
+                Halt::Expects(words) => format!("Panics unless {}.", lowered(words)),
             };
             ("stops", text)
         }
@@ -383,11 +413,11 @@ fn sound(text: &str) -> Option<String> {
 /// A sentence with what it quotes from the code stood in for.
 ///
 /// A span between backticks is code, not English, and reading it as English asks the grammar a
-/// question it has no answer to: `n < std::usize::MAX` is four words to a tokeniser and a fault to
-/// every rule that expects them to agree. What is being checked is the sentence built around the
-/// span, so the span is replaced by one word standing where it stands, and the sentence is graded
-/// on the part of it that is prose. This is the same reasoning that keeps the heading out of the
-/// grammar's way, applied one level down.
+/// question it has no answer to: a bound written against the largest number a machine word holds
+/// is four words to a tokeniser and a fault to every rule that expects them to agree. What is
+/// being checked is the sentence built around the span, so the span is replaced by one word
+/// standing where it stands, and the sentence is graded on the part of it that is prose. This is
+/// the same reasoning that keeps the heading out of the grammar's way, applied one level down.
 fn spanless(text: &str) -> String {
     let mut out = String::new();
     let mut inside = false;
@@ -500,6 +530,44 @@ mod tests {
         let found =
             comment("pub fn ratio(&self) -> f64 { assert!(self.mass > 0.0); self.mass }").unwrap();
         assert_eq!(found, "# Panics\n\nPanics unless `self.mass > 0.0` holds.");
+    }
+
+    #[test]
+    fn what_expect_was_promised_is_reported_as_the_thing_that_has_to_hold() {
+        // The message handed to `expect` says why the value was counted on, not what went wrong.
+        // Quoting it as the failure states the condition backwards, so it is turned around.
+        let found = comment(
+            "pub fn top(&self) -> u8 { self.parts.last().expect(\"a part is pushed first\") }",
+        )
+        .unwrap();
+        assert_eq!(found, "# Panics\n\nPanics unless a part is pushed first.");
+    }
+
+    #[test]
+    fn a_section_the_author_never_opened_is_added_under_what_they_wrote() {
+        // Carrying a comment is not the same as having said this. Measured on one repository, ten
+        // public functions could stop and not one of their comments mentioned it.
+        let source = "/// Ratio of the parts.\npub fn ratio(&self) -> f64 { assert!(self.mass > 0.0); self.mass }";
+        let found = comment(source).unwrap();
+        assert_eq!(
+            found, "\n# Panics\n\nPanics unless `self.mass > 0.0` holds.",
+            "the section goes below the author's words, which are left alone"
+        );
+    }
+
+    #[test]
+    fn a_section_the_author_already_opened_is_left_to_them() {
+        let source = "/// Ratio of the parts.\n///\n/// # Panics\n///\n/// Panics when empty.\npub fn ratio(&self) -> f64 { assert!(self.mass > 0.0); self.mass }";
+        assert_eq!(comment(source), None);
+    }
+
+    #[test]
+    fn a_summary_is_never_written_over_one_the_author_wrote() {
+        // A sentence with no heading has nowhere to go but the summary, and rewriting an author's
+        // summary is not this pass's business.
+        let source =
+            "/// Reads the file.\npub fn read_the_file(path: &str) -> Option<String> { None }";
+        assert_eq!(comment(source), None);
     }
 
     #[test]

@@ -520,6 +520,28 @@ Whether a stop can be reached is never asked. A stop guarded by a check the pass
 still reads as a stop, which is the safe direction to be wrong in for a warning and the reason the
 signature test above matters: it removes the cases where a reader had a better warning already.
 
+## Carrying a comment is not the same as having said this
+
+The pass used to skip any item that already had a doc comment, which sounds safe and hid the thing
+it was built to find. Counted with a separate reader over one repository, of six hundred and
+seventy-one public functions, fifteen can stop. Two were undocumented and both stop on a bare
+unwrap, so there was nothing to report. Three had been given a section by this pass. The other ten
+already had a comment, and not one of those comments mentioned that the function can stop at all.
+Skipping them left the reader with prose that reads as though nothing can go wrong.
+
+So a section the author never opened is now added below what they wrote, and every word they wrote
+is left alone. A section they did open is theirs. A sentence with no heading has nowhere to go but
+the summary, which they have already written, so it is left. Recall on that repository went from
+three to seven.
+
+What `expect` is handed is turned around before it is reported. A message given to `panic!`
+describes the failure, so it is quoted as the failure. A message given to `expect` describes what
+the caller was relying on, because the language asks for the reason the value is expected to be
+there, so quoting it as the failure states the condition backwards. It is reported as the thing
+that has to hold. That turn costs something: the message is then prose rather than a quoted span,
+so it is graded, and one true warning was dropped for reading badly. The rule is the same as
+everywhere else here: a sentence is written right, or it is not written.
+
 ## A stop is reported with the cause, or not at all
 
 Saying that a call can stop tells a caller nothing they can act on. They cannot see which argument

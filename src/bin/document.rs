@@ -67,17 +67,18 @@ fn main() {
                 }
                 continue;
             }
-            if naming || piece.documented || !piece.public {
+            if naming || !piece.public {
                 continue;
             }
             let Some(comment) = written(piece) else {
                 continue;
             };
             proposed += 1;
+            let at = under_doc(&source, piece.line);
             if writing {
-                edits.push((piece.line, marked(&comment, piece.indent)));
+                edits.push((at, marked(&comment, piece.indent)));
             } else {
-                println!("{path}:{}", piece.line);
+                println!("{path}:{at}");
                 print!("{}", marked(&comment, 4));
             }
         }
@@ -106,6 +107,22 @@ fn main() {
     }
 }
 
+/// The line a new section goes on, which is under whatever comment is already there.
+///
+/// An item's line is the first line of its comment when it has one, so writing there puts the new
+/// section above the author's summary and takes the summary's place. What is being added belongs
+/// under what they wrote, so the doc lines already there are stepped over first. Attributes are
+/// not stepped over: a doc comment has to stay next to what it documents, and only the run of
+/// comment lines starting the item is part of it.
+fn under_doc(source: &str, line: usize) -> usize {
+    let lines: Vec<&str> = source.split_inclusive('\n').collect();
+    let mut at = line;
+    while at >= 1 && at <= lines.len() && lines[at - 1].trim_start().starts_with("///") {
+        at += 1;
+    }
+    at
+}
+
 /// A comment written out as the doc comment lines that go above an item.
 ///
 /// A line with nothing on it is written without the space that would follow the marker, because a
@@ -125,4 +142,30 @@ fn marked(comment: &str, indent: usize) -> String {
         }
     }
     block
+}
+
+#[cfg(test)]
+mod tests {
+    use super::under_doc;
+
+    #[test]
+    fn a_new_section_goes_under_the_comment_that_is_already_there() {
+        // An item's line is the first line of its comment, so writing there displaced the
+        // author's summary and put a panics section in its place.
+        let source = "/// Solves it.\n///\n/// More about it.\npub fn solve() {}\n";
+        assert_eq!(under_doc(source, 1), 4, "under the three comment lines");
+    }
+
+    #[test]
+    fn an_item_with_no_comment_is_written_straight_above() {
+        assert_eq!(under_doc("pub fn solve() {}\n", 1), 1);
+    }
+
+    #[test]
+    fn an_attribute_is_not_stepped_over() {
+        // A doc comment has to stay next to what it documents, so only the run of comment lines
+        // starting the item is part of it.
+        let source = "/// Solves it.\n#[inline]\npub fn solve() {}\n";
+        assert_eq!(under_doc(source, 1), 2);
+    }
 }

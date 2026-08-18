@@ -361,6 +361,13 @@ pub enum Halt {
     Differ(String, String),
     /// What the code prints when it stops.
     Says(String),
+    /// What `expect` was promised, which is the opposite of the reason it stops.
+    ///
+    /// The message handed to `panic!` describes the failure, so it is quoted as the failure. The
+    /// message handed to `expect` describes what the caller was relying on instead — the language
+    /// asks for the reason the value is expected to be there — so quoting it as the failure states
+    /// the condition backwards. It is reported as the thing that has to hold.
+    Expects(String),
 }
 
 /// What a body says, found by looking at what it does rather than at what it is called.
@@ -458,7 +465,7 @@ impl<'ast> syn::visit::Visit<'ast> for Stopping {
                 // What is handed to `expect` is not a format, so a brace in it is a brace, and it
                 // is what the program will really print.
                 if let Some(words) = quotable(words.value().trim()) {
-                    self.keep(Halt::Says(words));
+                    self.keep(Halt::Expects(words));
                 }
             }
         }

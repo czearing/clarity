@@ -36,11 +36,22 @@ pub fn placed(source: &str, rust: bool) -> Vec<Vec<(usize, String)>> {
 }
 
 /// The prose lines run together, which is what a reader of them meets.
+///
+/// Within a block the lines are one passage, so they run together with a space and a sentence
+/// wrapped across two of them stays one sentence. Between blocks they do not. A paragraph is where
+/// the author stopped, and running two of them together lets a construct that groups words — a
+/// quotation above all — reach out of one paragraph and swallow the next. Observed here: a
+/// quotation closing on a full stop left its closing mark opening a span that ran three thousand
+/// characters into later sections, and everything it swallowed became one sentence, which is to
+/// say it stopped being read as sentences at all.
 fn joined(blocks: &[Vec<(usize, String)>]) -> String {
     let mut prose = String::new();
-    for (_, line) in blocks.iter().flatten() {
-        prose.push_str(line);
-        prose.push(' ');
+    for block in blocks {
+        for (_, line) in block {
+            prose.push_str(line);
+            prose.push(' ');
+        }
+        prose.push('\n');
     }
     prose
 }
