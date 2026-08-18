@@ -48,8 +48,8 @@ pub enum Fact {
     Reads,
     /// The call answers with nothing.
     Silent,
-    /// The call can stop the program, with the words that name the place it stops.
-    Halts,
+    /// The call can stop the program, with what the code gives as the cause.
+    Halts(Halt),
     /// A name is singular where the thing it names is many, or the other way about.
     ///
     /// The name, the number it carries, and the number its type asks for. This is
@@ -345,106 +345,197 @@ fn signature_facts(sig: &Signature) -> Vec<Finding> {
     facts
 }
 
+/// Why a call stops, in the words the code itself gives for it.
+///
+/// A stop is only worth reporting when the code says what would cause it. An assertion carries its
+/// check, and a stop written by hand usually carries a message; both are literal tokens, so
+/// repeating them invents nothing. Where neither is there, as with a bare unwrap, the code names no
+/// cause, and nothing here can name one either.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Halt {
+    /// A check that has to hold, written as the code writes it.
+    Unless(String),
+    /// Two things a check requires to be equal.
+    Equal(String, String),
+    /// Two things a check requires to differ.
+    Differ(String, String),
+    /// What the code prints when it stops.
+    Says(String),
+}
+
 /// What a body says, found by looking at what it does rather than at what it is called.
 fn body_facts(stmts: &[Stmt]) -> Vec<Finding> {
-    let mut halts = false;
+    let mut stopping = Stopping { why: None };
     for stmt in stmts {
-        walk_stmt(stmt, &mut halts);
+        syn::visit::Visit::visit_stmt(&mut stopping, stmt);
     }
     let mut facts = Vec::new();
-    if halts {
+    if let Some(why) = stopping.why {
         facts.push(Finding {
-            fact: Fact::Halts,
+            fact: Fact::Halts(why),
             price: SOMETIMES,
         });
     }
     facts
 }
 
-/// Whether anything in this statement can stop the program.
-fn walk_stmt(stmt: &Stmt, halts: &mut bool) {
-    let text = match stmt {
-        Stmt::Expr(expr, _) => quote_of(expr),
-        Stmt::Local(local) => local
-            .init
-            .as_ref()
-            .map(|init| quote_of(&init.expr))
-            .unwrap_or_default(),
-        Stmt::Item(_) | Stmt::Macro(_) => String::new(),
+/// The first cause of a stop found anywhere in a body, however deeply it is written.
+///
+/// This walks the tree rather than reading statements as text. A stop is very often not a statement
+/// at all: it is the tail of a chain, or the one line of a closure handed to another call, and a
+/// pass that only reads whole statements as strings can see that something stops without being able
+/// to say what would cause it. Walking also settles by construction the case a string search could
+/// never settle, of a name written inside a longer one.
+struct Stopping {
+    /// The first cause found, since one warning helps a caller and further ones do not.
+    why: Option<Halt>,
+}
+
+impl Stopping {
+    /// Keeps a cause unless one is already held.
+    fn keep(&mut self, why: Halt) {
+        if self.why.is_none() {
+            self.why = Some(why);
+        }
+    }
+
+    /// What this macro would stop for, where it is one of the macros that stop.
+    ///
+    /// The debug forms are absent, because a release build compiles them away, so a comment saying
+    /// the program can stop there would be wrong wherever it matters. A todo is absent for the
+    /// opposite reason: it always stops, so a caller is not being warned of a case but told the
+    /// work is unfinished, which the name already says to anyone who opens it.
+    fn macro_stop(&mut self, name: &str, tokens: &proc_macro2::TokenStream) {
+        let parts = parted(tokens);
+        match name {
+            "assert" => {
+                if let Some(check) = parts.first() {
+                    self.keep(Halt::Unless(tight(check.clone())));
+                }
+            }
+            "assert_eq" | "assert_ne" => {
+                if let [left, right, ..] = parts.as_slice() {
+                    let (left, right) = (tight(left.clone()), tight(right.clone()));
+                    self.keep(if name == "assert_eq" {
+                        Halt::Equal(left, right)
+                    } else {
+                        Halt::Differ(left, right)
+                    });
+                }
+            }
+            "panic" | "unreachable" => {
+                if let Some(words) = said(parts.first()) {
+                    self.keep(Halt::Says(words));
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+impl<'ast> syn::visit::Visit<'ast> for Stopping {
+    fn visit_macro(&mut self, node: &'ast syn::Macro) {
+        if self.why.is_some() {
+            return;
+        }
+        if let Some(name) = node.path.segments.last() {
+            self.macro_stop(&name.ident.to_string(), &node.tokens);
+        }
+        syn::visit::visit_macro(self, node);
+    }
+
+    fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
+        if self.why.is_some() {
+            return;
+        }
+        if node.method == "expect" {
+            if let syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(words),
+                ..
+            }) = &node.args[0]
+            {
+                self.keep(Halt::Says(words.value()));
+            }
+        }
+        syn::visit::visit_expr_method_call(self, node);
+    }
+}
+
+/// The words of a string written straight into the code, where that is what is there.
+fn said(part: Option<&proc_macro2::TokenStream>) -> Option<String> {
+    let text = part?.clone().into_iter().next()?;
+    let proc_macro2::TokenTree::Literal(written) = text else {
+        return None;
     };
-    // A statement may be a macro, and the ones that stop the program are most often written that
-    // way, on a line by themselves with nothing done to the result. It is asked for its name
-    // rather than written out, because writing out the arguments of every assertion in a test file
-    // costs more than the whole of the rest of the pass.
-    if let Stmt::Macro(called) = stmt {
-        if let Some(name) = called.mac.path.segments.last() {
-            if STOPPERS.contains(&name.ident.to_string().as_str()) {
-                *halts = true;
+    let quoted = written.to_string();
+    let inner = quoted.strip_prefix('"')?.strip_suffix('"')?;
+    // A message written for a person often ends where a value is put in. What comes before that is
+    // the part the author wrote, and the part a caller can be told.
+    let words = inner.split("{}").next().unwrap_or(inner).trim();
+    let words = words.trim_end_matches([':', ',', '-']).trim();
+    (!words.is_empty()).then(|| words.to_string())
+}
+
+/// The arguments of a macro, split where the commas between them are.
+fn parted(tokens: &proc_macro2::TokenStream) -> Vec<proc_macro2::TokenStream> {
+    let mut parts = vec![proc_macro2::TokenStream::new()];
+    for tree in tokens.clone() {
+        if let proc_macro2::TokenTree::Punct(mark) = &tree {
+            if mark.as_char() == ',' {
+                parts.push(proc_macro2::TokenStream::new());
+                continue;
+            }
+        }
+        parts
+            .last_mut()
+            .expect("a part is pushed before anything is put in one")
+            .extend(std::iter::once(tree));
+    }
+    parts.retain(|part| !part.is_empty());
+    parts
+}
+
+/// Code written back the way a person writes it, rather than the way tokens print.
+///
+/// Tokens print with a space between every one of them, so a call reads as `values . len ()`. That
+/// is not what the author wrote and not what a reader will search for, so the spaces that only
+/// exist because the tokens were taken apart are closed up again.
+fn tight(tokens: proc_macro2::TokenStream) -> String {
+    let mut out = String::new();
+    let mut joined = true;
+    for tree in tokens {
+        match tree {
+            proc_macro2::TokenTree::Group(inner) => {
+                let (open, close) = match inner.delimiter() {
+                    proc_macro2::Delimiter::Parenthesis => ("(", ")"),
+                    proc_macro2::Delimiter::Bracket => ("[", "]"),
+                    proc_macro2::Delimiter::Brace => ("{", "}"),
+                    proc_macro2::Delimiter::None => ("", ""),
+                };
+                out.push_str(open);
+                out.push_str(&tight(inner.stream()));
+                out.push_str(close);
+                joined = false;
+            }
+            proc_macro2::TokenTree::Punct(mark) => {
+                let letter = mark.as_char();
+                let held = matches!(letter, '.' | ',' | ';' | '!' | '?' | '&' | '#');
+                if !joined && !held {
+                    out.push(' ');
+                }
+                out.push(letter);
+                joined = held || mark.spacing() == proc_macro2::Spacing::Joint;
+            }
+            other => {
+                if !joined {
+                    out.push(' ');
+                }
+                out.push_str(&other.to_string());
+                joined = false;
             }
         }
     }
-    if stops(&text) {
-        *halts = true;
-    }
-}
-
-/// The macros that end the program when they are reached, or when their check does not hold.
-///
-/// The debug forms are left out, because a release build compiles them away, so a comment saying
-/// the program can stop there would be wrong wherever it matters.
-const STOPPERS: [&str; 7] = [
-    "panic",
-    "unreachable",
-    "todo",
-    "unimplemented",
-    "assert",
-    "assert_eq",
-    "assert_ne",
-];
-
-/// The text of an expression, used to ask what it does rather than to rewrite it.
-fn quote_of(part: &impl quote::ToTokens) -> String {
-    part.to_token_stream().to_string()
-}
-
-/// Whether a piece of code can stop the program where it stands.
-///
-/// This looks only for the names the standard library uses when it stops. A call that stops is
-/// found by what it calls, and no list has to be kept.
-///
-/// An assertion is one of them. It reads as a check rather than as a stop, but failing it ends the
-/// program exactly as the others do, and a caller who is never told cannot tell the difference.
-/// The debug forms are not, because they are compiled out of a release build, so a comment saying
-/// the program can stop there would be wrong wherever it matters.
-fn stops(text: &str) -> bool {
-    [
-        "panic !",
-        "unreachable !",
-        "todo !",
-        "unimplemented !",
-        ". unwrap ()",
-        ". expect (",
-    ]
-    .iter()
-    .any(|mark| calls(text, mark))
-}
-
-/// Whether this text calls something by this name, rather than merely containing the letters.
-///
-/// A name is only a name where it starts, so what comes before it has to be something a name cannot
-/// be written with. Without this a name written inside a longer one answers to the shorter, and a
-/// stop a release build compiles away is reported as one that happens.
-fn calls(text: &str, mark: &str) -> bool {
-    let mut from = 0;
-    while let Some(at) = text[from..].find(mark) {
-        let start = from + at;
-        let before = text[..start].chars().next_back();
-        if !before.is_some_and(|letter| letter.is_alphanumeric() || letter == '_') {
-            return true;
-        }
-        from = start + 1;
-    }
-    false
+    out
 }
 
 /// The outermost name in a type, which is what the type is.
@@ -570,7 +661,7 @@ pub fn reads_as(name: &str) -> Option<Number> {
 
 #[cfg(test)]
 mod tests {
-    use super::{findings, Fact, Number};
+    use super::{findings, Fact, Halt, Number};
 
     #[test]
     fn a_signature_says_whether_the_answer_can_be_missing() {
@@ -606,9 +697,49 @@ mod tests {
     }
 
     #[test]
-    fn a_body_that_can_stop_the_program_says_so() {
+    fn a_stop_is_reported_with_the_cause_the_code_gives_for_it() {
+        let found = findings("fn take(of: &[u8]) -> u8 { assert!(!of.is_empty()); of[0] }");
+        assert!(found[0]
+            .facts
+            .iter()
+            .any(|f| f.fact == Fact::Halts(Halt::Unless("!of.is_empty()".to_string()))));
+    }
+
+    #[test]
+    fn a_check_of_two_things_is_reported_as_both_of_them() {
+        let found = findings("fn take(of: &[u8], n: usize) { assert_eq!(of.len(), n * n); }");
+        assert!(found[0].facts.iter().any(
+            |f| f.fact == Fact::Halts(Halt::Equal("of.len()".to_string(), "n * n".to_string()))
+        ));
+    }
+
+    #[test]
+    fn a_stop_written_where_no_statement_reaches_is_still_found() {
+        let found = findings(
+            r#"fn take(of: &[u8]) -> u8 { of.first().copied().unwrap_or_else(|| panic!("no bytes: {}", 1)) }"#,
+        );
+        assert!(found[0]
+            .facts
+            .iter()
+            .any(|f| f.fact == Fact::Halts(Halt::Says("no bytes".to_string()))));
+    }
+
+    #[test]
+    fn a_stop_the_code_gives_no_cause_for_is_not_reported() {
         let found = findings("fn get(of: &[u8]) -> u8 { *of.first().unwrap() }");
-        assert!(found[0].facts.iter().any(|f| f.fact == Fact::Halts));
+        assert!(!found[0]
+            .facts
+            .iter()
+            .any(|f| matches!(f.fact, Fact::Halts(_))));
+    }
+
+    #[test]
+    fn a_check_a_release_build_deletes_is_not_reported() {
+        let found = findings("fn take(of: &[u8]) { debug_assert!(!of.is_empty()); }");
+        assert!(!found[0]
+            .facts
+            .iter()
+            .any(|f| matches!(f.fact, Fact::Halts(_))));
     }
 
     #[test]

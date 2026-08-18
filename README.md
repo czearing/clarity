@@ -160,8 +160,21 @@ document --noise src/**/*.rs    # comments that say nothing the declaration does
 
 The pass reads each file with `syn` and gathers what the code proves: whether a call answers with
 nothing, whether it can fail, whether it changes what it is used on, what it is handed, how many
-of a thing its type holds. Each finding carries a price for how sure it is, and a line is written
-only when its price plus its length beats saying nothing.
+of a thing its type holds, and what would stop it. Each finding carries a price for how sure
+it is, and a line is written only where it says something the declaration under it does not.
+
+Most items get nothing, and that is the point. What survives is the stop a caller has no other
+warning of, written with the cause the source already states:
+
+```rust
+/// # Panics
+///
+/// Panics unless `values.len()` and `n * n` are equal.
+pub fn from_vec(n: usize, values: Vec<f64>) -> Matrix {
+    assert_eq!(values.len(), n * n);
+```
+
+Where the code names no cause, as a bare unwrap does not, nothing is written.
 
 Nothing about any repository is written into it. There are no phrasings to fill in and no verbs
 listed anywhere. A name is split into words, the signature says whether the call does something or
@@ -172,6 +185,7 @@ and thrown away if the engine faults it, so a rule added to the grammar tightens
 written with nothing changing in the generator. And the only edit it can express is inserting
 `///` lines, so touching code is not something it declines to do but something it cannot say.
 
-On a repository of 841 files it read 4541 items in 4.4 seconds and wrote 1767 doc comment lines
-across 274 files. `git diff` reported 1767 lines added and none deleted, every one a doc comment,
-and the repository still built. The lines it wrote read back with no faults and no unknown words.
+On a repository of 841 files it read 5010 items in 4.8 seconds and wrote three comments. `git diff`
+reported nine lines added and three removed, every one a doc comment, and the repository still
+built. Each of the three was then read by hand against the body under it and found true. Three comments
+are the whole of what 5010 items licensed, where an earlier and looser rule wrote 1948.

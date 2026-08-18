@@ -31,18 +31,29 @@
 //! let plain = "pub fn holds(&self) -> bool { true }";
 //! assert!(written(&findings(plain)[0]).is_none());
 //!
-//! // This one can stop the program, which a reader would have to open the body to find out.
-//! let stops = "pub fn holds(&self) -> bool { self.value.unwrap() }";
-//! assert!(written(&findings(stops)[0]).is_some());
+//! // A bare unwrap can stop the program but says nothing about when, so there is nothing to
+//! // report that a reader could act on.
+//! let bare = "pub fn holds(&self) -> bool { self.value.unwrap() }";
+//! assert!(written(&findings(bare)[0]).is_none());
+//!
+//! // A check names what has to hold, and that a reader cannot get from the declaration.
+//! let checked = "pub fn holds(&self, n: usize) -> bool { assert!(n > 0); n == 1 }";
+//! assert_eq!(
+//!     written(&findings(checked)[0]).unwrap(),
+//!     "# Panics\n\nPanics unless `n > 0` holds."
+//! );
 //! ```
 
-use crate::code::{Fact, Piece};
+use crate::code::{Fact, Halt, Piece};
 use crate::grammar::Sentence;
 
 /// What one sentence of a comment costs to carry.
 ///
-/// A word is charged so that a comment saying the same thing in fewer words wins, and a finding is
-/// charged what the code paid for it, so a sure thing is said before an unsure one.
+/// A word is charged against the shortest rival saying the same thing, so that where two sentences
+/// carry one finding the briefer wins. It is charged that way rather than outright because an
+/// outright charge is a length limit wearing the clothes of a comparison: it silences a true
+/// sentence for being long, even when nothing else offers to say what it says. A finding is charged
+/// what the code paid for it, so a sure thing is said before an unsure one.
 const WORD: f64 = 1.0;
 
 /// What is saved by saying something at all, which is what stops the empty comment always winning.
@@ -54,6 +65,14 @@ struct Line {
     price: f64,
     /// Whether it says anything the declaration under it does not already show.
     told: bool,
+    /// The rustdoc section this sentence belongs under, where it belongs under one.
+    ///
+    /// A heading is not prose and is not charged as prose. It is where a Rust reader looks, and
+    /// where the tools look: rustdoc renders it as its own block, and `clippy::missing_panics_doc`
+    /// is satisfied by nothing else.
+    head: Option<&'static str>,
+    /// What this sentence is about, so that two saying the same thing can be compared.
+    about: &'static str,
 }
 
 /// The doc comment for a piece of code, or nothing where the code licensed nothing.
@@ -85,19 +104,36 @@ fn chosen(piece: &Piece) -> Vec<String> {
             text,
             price: crate::code::SIGNED,
             told: false,
+            head: None,
+            about: "summary",
         });
     }
     offered.extend(piece.facts.iter().filter_map(|found| line(found, piece)));
     let mut kept: Vec<String> = Vec::new();
     for candidate in &offered {
-        #[allow(clippy::cast_precision_loss)]
-        let words = candidate.text.split_whitespace().count() as f64 * WORD;
+        let fewest = offered
+            .iter()
+            .filter(|rival| rival.about == candidate.about)
+            .map(|rival| counted(&rival.text))
+            .fold(f64::INFINITY, f64::min);
+        let words = (counted(&candidate.text) - fewest) * WORD;
         let earned = if candidate.told { SAID } else { 0.0 };
         if candidate.price + words - earned < 0.0 && !kept.contains(&candidate.text) {
+            if let Some(head) = candidate.head {
+                kept.push(format!("# {head}"));
+                kept.push(String::new());
+            }
             kept.push(candidate.text.clone());
         }
     }
     kept
+}
+
+/// How long a sentence is, counted in words.
+fn counted(text: &str) -> f64 {
+    #[allow(clippy::cast_precision_loss)]
+    let words = text.split_whitespace().count() as f64;
+    words
 }
 
 /// The first line, which says what the thing is.
@@ -285,17 +321,39 @@ fn phrase(words: &[String]) -> String {
 /// to be opened and followed, so a reader does not have it, and a sentence carrying it is the
 /// reason to write a comment at all.
 fn line(found: &crate::code::Finding, piece: &Piece) -> Option<Line> {
-    let text = match &found.fact {
-        Fact::MayBeAbsent => "Answers with nothing where it finds none.",
-        Fact::MayFail => "Reports a failure rather than stopping.",
-        Fact::Alters => "Changes what it is used on.",
-        Fact::Halts if !reports_failure(piece) => "This can stop the program.",
+    let mut head = None;
+    let (about, text) = match &found.fact {
+        Fact::MayBeAbsent => (
+            "absent",
+            "Answers with nothing where it finds none.".to_string(),
+        ),
+        Fact::MayFail => (
+            "fails",
+            "Reports a failure rather than stopping.".to_string(),
+        ),
+        Fact::Alters => ("alters", "Changes what it is used on.".to_string()),
+        Fact::Halts(why) if !reports_failure(piece) => {
+            head = Some("Panics");
+            let text = match why {
+                Halt::Unless(check) => format!("Panics unless `{check}` holds."),
+                Halt::Equal(left, right) => {
+                    format!("Panics unless `{left}` and `{right}` are equal.")
+                }
+                Halt::Differ(left, right) => {
+                    format!("Panics unless `{left}` and `{right}` differ.")
+                }
+                Halt::Says(words) => format!("Panics with `{}`.", lowered(words)),
+            };
+            ("stops", text)
+        }
         _ => return None,
     };
-    sound(text).map(|text| Line {
+    sound(&text).map(|text| Line {
         text,
         price: found.price,
         told: found.price > crate::code::SIGNED,
+        head,
+        about,
     })
 }
 
@@ -417,8 +475,20 @@ mod tests {
 
     #[test]
     fn what_only_the_body_shows_is_written_because_a_reader_would_have_to_look() {
-        let found = comment("pub fn ratio(&self) -> f64 { self.mass.unwrap() }").unwrap();
-        assert_eq!(found, "This can stop the program.");
+        let found =
+            comment("pub fn ratio(&self) -> f64 { assert!(self.mass > 0.0); self.mass }").unwrap();
+        assert_eq!(found, "# Panics\n\nPanics unless `self.mass > 0.0` holds.");
+    }
+
+    #[test]
+    fn a_stop_the_code_gives_no_cause_for_is_left_unwritten() {
+        // A bare unwrap says only that something can stop, which a reader can see by opening the
+        // body and cannot act on by reading the comment. There is no cause to report, so the rule
+        // that a comment must say something the declaration does not leaves nothing to write.
+        assert_eq!(
+            comment("pub fn ratio(&self) -> f64 { self.mass.unwrap() }"),
+            None
+        );
     }
 
     #[test]
@@ -426,8 +496,8 @@ mod tests {
         // The declaration says this can fail, so a reader expects it. What is left inside is the
         // author asserting a case cannot arise, guarded somewhere a caller cannot be warned about.
         for source in [
-            "pub fn ratio(&self) -> Result<f64, Bad> { Ok(self.mass.unwrap()) }",
-            "pub fn ratio(&self) -> Option<f64> { Some(self.mass.unwrap()) }",
+            r#"pub fn ratio(&self) -> Result<f64, Bad> { Ok(self.mass.expect("a mass")) }"#,
+            r#"pub fn ratio(&self) -> Option<f64> { Some(self.mass.expect("a mass")) }"#,
         ] {
             assert_eq!(comment(source), None, "{source}");
         }
@@ -436,12 +506,18 @@ mod tests {
     #[test]
     fn every_sentence_written_is_one_the_engine_can_read() {
         for source in [
-            "pub fn holds(&self) -> bool { self.value.unwrap() }",
-            "impl T { pub fn clear(&mut self) { panic!() } }",
-            "pub fn read_the_file(path: &str) -> String { open(path).unwrap() }",
+            r#"pub fn holds(&self) -> bool { self.value.expect("a value was set") }"#,
+            r#"impl T { pub fn clear(&mut self) { panic!("nothing to clear: {}", 1) } }"#,
+            "pub fn width(&self, n: usize) -> usize { assert_ne!(n, 0); self.rows / n }",
+            "pub fn area(&self, n: usize) -> usize { assert_eq!(self.rows, n * n); n }",
         ] {
             let found = comment(source).unwrap();
             for line in found.lines() {
+                // A heading and the blank line under it are the shape rustdoc reads, not prose,
+                // and the grammar has nothing to say about either.
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
                 let report = crate::check::check(&crate::grammar::Sentence::read(line));
                 assert!(report.is_clean(), "{line}: {:?}", report.faults);
             }

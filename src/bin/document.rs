@@ -74,21 +74,11 @@ fn main() {
                 continue;
             };
             proposed += 1;
-            let pad = " ".repeat(piece.indent);
-            let mut block = String::new();
-            for line in comment.lines() {
-                block.push_str(&pad);
-                block.push_str("/// ");
-                block.push_str(line);
-                block.push('\n');
-            }
             if writing {
-                edits.push((piece.line, block));
+                edits.push((piece.line, marked(&comment, piece.indent)));
             } else {
                 println!("{path}:{}", piece.line);
-                for line in comment.lines() {
-                    println!("    /// {line}");
-                }
+                print!("{}", marked(&comment, 4));
             }
         }
         if writing && !edits.is_empty() {
@@ -114,4 +104,25 @@ fn main() {
     } else {
         println!("items {items}, comments proposed {proposed}");
     }
+}
+
+/// A comment written out as the doc comment lines that go above an item.
+///
+/// A line with nothing on it is written without the space that would follow the marker, because a
+/// space at the end of a line is what `cargo fmt` removes and what a reviewer sees as a change
+/// nobody made.
+fn marked(comment: &str, indent: usize) -> String {
+    let pad = " ".repeat(indent);
+    let mut block = String::new();
+    for line in comment.lines() {
+        block.push_str(&pad);
+        if line.is_empty() {
+            block.push_str("///\n");
+        } else {
+            block.push_str("/// ");
+            block.push_str(line);
+            block.push('\n');
+        }
+    }
+    block
 }

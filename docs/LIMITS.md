@@ -511,16 +511,53 @@ bytes into an array of eight, and the other takes the last of a list a validator
 refused to leave empty. Both return a `Result` that reports every failure that can happen. Both
 comments would have been false.
 
-Three things about stops are known and unfixed. An assertion is found by the name of the macro
-where it stands as a statement, which is how one is almost always written, so an assertion buried
-in the middle of an expression is missed. The debug forms are deliberately not counted, since a
-release build compiles them away and a comment saying otherwise would be wrong where it matters.
-And nothing is said about arithmetic that overflows, an index out of range, or a division by zero,
-because those stop without being written down anywhere the pass can see.
+The debug forms are deliberately not counted, since a release build compiles them away and a
+comment saying otherwise would be wrong where it matters. Nothing is said about arithmetic that
+overflows, an index out of range, or a division by zero, because those stop without being written
+down anywhere the pass can see.
 
 Whether a stop can be reached is never asked. A stop guarded by a check the pass cannot follow
 still reads as a stop, which is the safe direction to be wrong in for a warning and the reason the
 signature test above matters: it removes the cases where a reader had a better warning already.
+
+## A stop is reported with the cause, or not at all
+
+Saying that a call can stop tells a caller nothing they can act on. They cannot see which argument
+to check, and the sentence takes a reading to arrive nowhere. What a caller needs is the cause, and
+in the two places a stop is written the cause is already there in the source: an assertion carries
+its check, and a stop written by hand usually carries a message. Both are literal tokens, so
+repeating them invents nothing.
+
+So the cause is read out and quoted:
+
+```text
+assert_eq!(values.len(), n * n)
+    -> Panics unless `values.len()` and `n * n` are equal.
+
+panic!("unsupported proteolysis state: {}", error.0)
+    -> Panics with `unsupported proteolysis state`.
+```
+
+A message is cut where the first value is put into it, because what comes before that is the part
+the author wrote. It goes under a `# Panics` heading, which is where a reader of Rust looks and the
+only place `clippy::missing_panics_doc` accepts.
+
+Where the code gives no cause, nothing is written. A bare unwrap is the case: it can stop, and it
+says nothing about when. Under the old rule it earned a comment, and that comment was the worst
+one the pass produced.
+
+Two things follow from reading the cause rather than the name. Bodies are now walked as trees
+instead of read as text, so a stop is found wherever it is written: in the tail of a chain, or in
+the one line of a closure handed to another call. Both of the stops that survive on the food
+repository are of that second kind. Walking also settles by construction the case a text search
+had to be patched for, of a name written inside a longer one.
+
+One number moved with it. A word used to be charged outright, which read as a comparison and acted
+as a length limit: a true sentence naming its cause runs eight words, and eight words plus the
+price of a body fact came to exactly the value of saying something, so the search left it and wrote
+nothing. A word is now charged against the shortest rival saying the same thing, which is what the
+charge was always described as doing. Length now separates two ways of saying one thing and can no
+longer silence the only sentence that says it.
 
 ## Reporting comments that say nothing
 
