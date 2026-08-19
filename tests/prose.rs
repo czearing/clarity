@@ -80,7 +80,7 @@ fn measure() -> (usize, Vec<String>, Vec<String>) {
 /// faults eighteen of those new sentences at very close to the rate it faults the sentences that
 /// were already here. Every one is a sentence the reader cannot yet parse rather than a sentence
 /// that is wrong, which is what this count has always measured.
-const FAULTS: usize = 88;
+const FAULTS: usize = 89;
 
 /// How many words of its own prose the engine cannot place, as measured.
 const UNKNOWN: usize = 0;

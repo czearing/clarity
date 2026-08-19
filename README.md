@@ -118,7 +118,7 @@ there is counted, held to that count in both directions, and set out in `docs/LI
 | Faulty sentences repaired to clean | 20 of 20, never more than two swaps |
 | Wasteful sentences named | 12 of 12 |
 | Passages whose conventions were recovered | 5 of 5, and the planted fault caught in each |
-| Faults left in seven hundred units of the crate's own prose | 88, bounded in both directions |
+| Faults left in seven hundred units of the crate's own prose | 89, bounded in both directions |
 
 Every example above is compiled and run as a doctest. Timings are what `cargo bench` reports for
 `benches/read.rs`; on the machine that wrote this, checking a short sentence takes about two
@@ -164,36 +164,47 @@ kind of input lives in `read`, and nothing particular to a kind of input lives a
 
 Two searches settle what appears. A subset search over the claims decides which parts are worth
 stating, weighing what each part holds against how much of it the input actually describes, and
-against how much vocabulary two parts share. A path search over the input's own words decides the
-wording of each clause: a clause is a subsequence of the text it is about, so a word can be left
-out and one passage can be spliced to another, but a place already used cannot be returned to.
-Saying the same thing twice is not expensive, it is unrepresentable.
+against how much vocabulary two parts share. A path search over the input's own text decides what
+is said about each: the states are the places of one sentence the input wrote about that part, and
+the path runs through them in the order they were written. So a line of the output is a sentence
+somebody wrote, entire, in the words and the spelling and the punctuation they wrote it in.
+
+Assembling a line out of words gathered from all over the input was tried first and abandoned.
+Every word could still cite the place it was read from, and the result was still about the right
+things, but a sentence is not a bag of characteristic words in a plausible order, and what came out
+read as evidence rather than as writing. Shortening a real sentence at joins the text writes
+elsewhere was tried next: it produces grammatical wreckage of a subtler kind, sentences whose parts
+were each written by the author and whose meaning was not. What is left is the only honest thing
+the engine can do without writing a word itself, which is to find the sentence and report it.
 
 Nothing here holds a phrasing. There is no sentence written in this repository for an output to
 be filled into, and no list of verbs: a word can only reach a reader if the input put it there,
-which the test suite checks by taking every word written and finding the place it was read from.
+which the test suite checks by taking every line written and finding it verbatim in the input.
 The words that name a property are hashed on the way in, so what a caller calls something cannot
 turn up in a sentence. Where a sentence ends is learned too, from which mark this text attaches to
 its words, is followed by a capital more often than chance would explain, and finishes a passage
 more often than chance would put it there.
 
-A part the input says nothing about is refused rather than written about, and an input that never
-finishes a sentence is refused rather than guessed at. That is why the engine can be handed a
-framework, a wiki page and a novel without being changed for any of them: it was never taught what
-any of them are.
+Which sentence to report is the measurement. A sentence earns its place by how much of the
+vocabulary that is characteristic of the part is in it, against the root of its length, so that
+neither the three most loaded words in the file nor its longest paragraph wins by default. A
+sentence written in more marks and lone characters than half this text's sentences use is not
+prose at all but a table row, a line of mathematics or an entry in a bibliography, and is left
+where it was found. A part the input wrote no more than a single line about is a caption rather
+than a description, and is not reported as one.
 
-Two more things are settled by measurement rather than by rule. A word that says something about a
-part is given one place in a clause and not every place, so saying it twice is unavailable rather
-than expensive, and where the input repeats itself the writing does not. And every ratio is weighed
-by how many observations it rests on, because a word written once in one place looks infinitely
-characteristic of that place, and a measure that believes it writes sentences out of whatever the
-input happened to say once.
+Where a sentence ends had one more thing to learn: a mark that a word is written with every single
+time that word appears is part of how the word is spelt, not the end of anything. Nothing here
+knows what an abbreviation is. It knows that a title written before a name carries its dot on all
+eighty occasions it appears and that chance does not do that, so the run has to be one this text
+would not have thrown up by accident, and how long that is is set by how often the mark follows
+anything at all.
 
 The whole of fitkit, seven crates and ten thousand words of doc comments, is read and written about
-in 0.15 seconds. A TypeScript application takes 0.07, an encyclopedia entry 0.05, and a novel of
-seven hundred thousand characters 0.19.
+in 0.12 seconds. A TypeScript application takes 0.04, an encyclopedia entry 0.02, and a novel of
+seven hundred thousand characters 0.15.
 
-Of the four hundred and thirty words it wrote about fitkit, every one is written in fitkit's
-source, and fifty six percent of the neighbouring pairs are pairs fitkit itself wrote; the rest are
-joins the search made. What it produces is a compression of what each part says about itself, and
-it reads like one: several lines are not sentences a person would sign.
+Across all four, every line the engine wrote appears verbatim in the input it was given, and no two
+words appear next to each other that the input did not write next to each other. That is checked
+mechanically rather than claimed, on a repository, an application in a language the engine was
+never taught, an encyclopedia article and a novel.

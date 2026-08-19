@@ -646,25 +646,45 @@ prefers the empty one, and a model that pays per word always prefers the longest
 reachable only through the mark this text ends sentences with, and the last step of the search
 admits nothing else, so where a clause stops is a decision the search made.
 
-Two faults were left in the first version of this and are worth recording, because both were the
-same mistake. A ratio of rates is wildest where it rests on least, so a word written once looked
-infinitely characteristic of the one place it appeared, and the engine wrote passages out of
-whatever the input said only once. It is now weighed by how many observations it rests on, which is
-the correction Pantel and Lin give for the same fault in pointwise mutual information. And a word
-that says something was being said again and again inside one clause, because increasing position
-allows it; a word that says something now has one place in a clause and not every place, so
-repetition is unavailable rather than expensive, while the words that carry no information keep all
-of theirs because a sentence needs them wherever it needs them.
+The engine was rebuilt once more, and the reason is worth recording because it was a mistake about
+what the job is. A clause used to be assembled: a path through the places of the input where words
+bearing on a part had been read, free to leave words out and to splice one passage to another, as
+long as it never went backwards. Every word cited the span it came from and the result was about
+the right subject, so every test passed. It also could not be read. A sentence is not a bag of
+characteristic words in a likely order, and the tests could not see the difference because none of
+them asked whether the output was a sentence.
 
-A third fault was in the rendering rather than the search. Whether a word was written against its
-neighbour is a fact about the place it came from, and a clause that splices it next to a different
-word has left that place behind. Honouring it there ran two words into one and reported four tokens
-nobody had written. Only a mark is written against the word before it.
+Shortening a real sentence was the next attempt, and it is the more instructive failure. A deletion
+was allowed only where the input itself had written the two words that would then meet, which
+sounds like the text vouching for the join. It vouches for the join and not for the sentence: what
+came out was *Collins, my cousin Lydia's sad business has been concerned that their marriage took
+place should be known*, every join attested and the whole thing nonsense. An author's words rear-
+ranged are the author's words in name only.
 
-Measured: fitkit, seven crates and ten thousand words of doc comments, 0.15 seconds. A TypeScript
-application, 0.07. An encyclopedia entry, 0.05. A novel of seven hundred and thirty thousand
-characters, 0.19. Of the four hundred and thirty words written about fitkit every one is written in
-fitkit's source, and fifty six percent of the neighbouring pairs are pairs fitkit itself wrote. The condition was
+What is left is the only honest thing available to something that may not write a word of its own:
+find the sentence the input already wrote about the part, and report it whole. Everything the
+engine decides is now a decision about selection, which is a decision it can support with evidence,
+and nothing it decides is a decision about language, which it has no standing to make.
+
+Three smaller things had to be learned to make that work, all of them by reading output that was
+wrong. A mark a word is written with on every occasion it appears is part of the spelling, so
+a title written before a name does not end a sentence — with the run required to be longer than
+chance would produce, because a word seen twice which ends both times has shown nothing. A paragraph break in a doc
+comment is a break the author made, so a heading no longer runs into the sentence beneath it. And a
+sentence written in more marks and lone characters than half this text's sentences use is a table
+row, a line of mathematics or a bibliography entry rather than prose. The comparison is against the
+middle sentence and not the average token, because a text full of mathematics has an average its
+own prose never reaches.
+
+What this costs is worth stating plainly. The engine cannot condense. It cannot write a sentence
+that says what two sentences said, it cannot report a count, and where an author wrote nothing
+usable about a part it says nothing about that part. What it buys is that no line it has ever
+emitted was written by it.
+
+Measured: fitkit, 0.12 seconds. A TypeScript application, 0.04. An encyclopedia article, 0.02. A
+novel of seven hundred and thirty thousand characters, 0.15. Across all four, every line appears
+verbatim in the input, and no two words appear beside each other that the input did not write
+beside each other. The condition was
 thirty seconds. One number in the old pass was wrong by a factor a reader would notice: asking for
 the exact best subset of fifty four claims is two to the fifty four combinations, and the search
 sat there. It is asked for the exact answer up to twenty claims and a beam beyond, and it reports

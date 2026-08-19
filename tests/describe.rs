@@ -305,3 +305,58 @@ fn how_much_is_said_is_a_decision_and_not_a_setting() {
         "the selection stated {all} parts whether or not it was held to fewer"
     );
 }
+
+#[test]
+fn every_line_is_a_sentence_the_input_itself_wrote() {
+    let text = ledger();
+    let reading = read_prose(&text).expect("prose the engine can read");
+    let said = compose(reading.corpus(), reading.claims(), MOST_CLAIMS).expect("something to say");
+    let source = squashed(&text);
+    let mut checked = 0;
+    for clause in said.clauses().expect("every clause was composed") {
+        let line = squashed(&clause.text());
+        assert!(
+            source.contains(&line),
+            "a line was written that the input never wrote: {line:?}"
+        );
+        checked += 1;
+    }
+    assert!(checked > 0, "nothing was written, so this proves nothing");
+}
+
+#[test]
+fn no_two_words_were_put_together_by_the_engine() {
+    let text = ledger();
+    let reading = read_prose(&text).expect("prose the engine can read");
+    let said = compose(reading.corpus(), reading.claims(), MOST_CLAIMS).expect("something to say");
+    // Compared with the spacing taken out altogether, because the input writes a mark against the
+    // word before it and a pair read off the clause has a space where the input had none.
+    let source = tight(&text);
+    let mut pairs = 0;
+    for clause in said.clauses().expect("every clause was composed") {
+        let words: Vec<String> = clause
+            .words()
+            .filter_map(clarity_say::Slot::word)
+            .map(str::to_owned)
+            .collect();
+        for pair in words.windows(2) {
+            let together = tight(&pair.join(" "));
+            assert!(
+                source.contains(&together),
+                "two words were run together that the input never ran together: {together:?}"
+            );
+            pairs += 1;
+        }
+    }
+    assert!(pairs > 0, "nothing was written, so this proves nothing");
+}
+
+/// Text with its spacing flattened, so that a line wrapped in the input still matches.
+fn squashed(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Text with its spacing removed, for comparing two words the input may have written together.
+fn tight(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().concat()
+}

@@ -65,9 +65,11 @@ impl Feature {
 }
 
 /// One token as it was observed: which word, how it was spelled, and how it was spaced.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct Seen {
     word: usize,
+    /// Exactly how this occurrence was written.
+    spelling: String,
     /// Where in the input this token was read from.
     span: Span,
     /// Whether it was written with an initial capital.
@@ -88,6 +90,7 @@ pub struct Place {
     word: Word,
     at: usize,
     span: Span,
+    glued: bool,
 }
 
 impl Place {
@@ -108,6 +111,26 @@ impl Place {
     pub const fn source(self) -> Span {
         self.span
     }
+
+    /// Whether the input wrote this token hard against the one before it, with no space.
+    ///
+    /// This is a fact about the place and not about the word: the same word is written against
+    /// its neighbour on one line and apart from it on the next. A composition that has dropped
+    /// the token this one was written against has left that fact behind, which is why a clause
+    /// may only reach a glued place by way of the place it was glued to.
+    #[must_use]
+    pub const fn is_glued(self) -> bool {
+        self.glued
+    }
+}
+
+/// Whether a token is punctuation or a lone character rather than a word.
+///
+/// Mathematics is written in single characters and prose is not, and neither fact had to be
+/// stated: the difference shows up in the text as a rate, and a run of tokens far above the rate
+/// the text writes at is a run the author was not writing sentences in.
+fn is_symbolic(token: &Seen) -> bool {
+    token.marking || token.spelling.chars().count() == 1
 }
 
 /// A word's record in the vocabulary.
@@ -155,6 +178,8 @@ pub struct Corpus {
     weight: BTreeMap<Feature, u32>,
     /// Learned: the punctuation that ends a sentence, most convincing first.
     terminators: Vec<usize>,
+    /// Learned: the share of a typical sentence that is marks and lone characters.
+    marking: f64,
     settled: bool,
 }
 
@@ -190,6 +215,7 @@ impl Corpus {
             let word = self.intern(token, span);
             self.stream.push(Seen {
                 word,
+                spelling: token.to_owned(),
                 span,
                 capital: token.chars().next().is_some_and(char::is_uppercase),
                 attached: attached && gap == 0,
@@ -214,9 +240,15 @@ impl Corpus {
         if self.settled {
             return;
         }
+        // Which words are spelt with a mark has to be known before where sentences end, because
+        // that is the difference between a mark ending a sentence and a mark spelling a word, and
+        // the count of one word directly after another is what decides it. Counted here without
+        // regard to sentences, then counted again within them once they are known.
+        self.count_adjacency();
         self.terminators = self.learn_terminators();
         self.count_transitions();
         self.count_marks();
+        self.marking = self.measure_marking();
         self.settled = true;
     }
 
@@ -432,6 +464,7 @@ impl Corpus {
                             word: Word(token.word),
                             at,
                             span: token.span,
+                            glued: token.attached,
                         },
                     )
                 })
@@ -492,6 +525,7 @@ impl Corpus {
                         word,
                         at: start + offset,
                         span: token.span,
+                        glued: token.attached,
                     },
                 ));
             }
@@ -502,6 +536,118 @@ impl Corpus {
         }
         found.sort_by_key(|&(_, place)| place.at);
         found.into_iter().map(|(_, place)| place).collect()
+    }
+
+    /// Exactly how the input wrote the token at this place.
+    ///
+    /// A word has a spelling the text prefers, and that is what a composition that assembles a
+    /// sentence out of scattered words has to fall back on. A clause that reports a sentence
+    /// somebody wrote has no need of it: the sentence is there, and reporting it in any other
+    /// casing than the one it was written in is reporting something nobody wrote.
+    #[must_use]
+    pub fn written(&self, place: Place) -> &str {
+        &self.stream[place.at].spelling
+    }
+
+    /// How much of a typical sentence of this text is marks and lone characters rather than words.
+    ///
+    /// The middle sentence rather than the average token, because a text with a great deal of
+    /// mathematics in it has an average that its own prose never reaches, and comparing a sentence
+    /// against that average admits every table in the file. Half this text's sentences are at or
+    /// under this, whatever the text is, which is a line the text draws and not one drawn here.
+    // A count of the sentences in a text. A count large enough to lose a bit here is a text
+    // nobody has, and a rate taken from one reads the same either way.
+    #[allow(clippy::cast_precision_loss)]
+    #[must_use]
+    pub const fn marking_rate(&self) -> f64 {
+        self.marking
+    }
+
+    /// Measure it, once the sentences are known.
+    // A count of the sentences in a text. A count large enough to lose a bit here is a text
+    // nobody has, and a rate taken from one reads the same either way.
+    #[allow(clippy::cast_precision_loss)]
+    fn measure_marking(&self) -> f64 {
+        let mut shares: Vec<f64> = Vec::new();
+        let mut marks = 0usize;
+        let mut length = 0usize;
+        for (index, token) in self.stream.iter().enumerate() {
+            length += 1;
+            if is_symbolic(token) {
+                marks += 1;
+            }
+            if self.ends_sentence(index) {
+                shares.push(marks as f64 / length as f64);
+                marks = 0;
+                length = 0;
+            }
+        }
+        if shares.is_empty() {
+            return 1.0;
+        }
+        shares.sort_by(f64::total_cmp);
+        shares[shares.len() / 2]
+    }
+
+    /// Whether this token is a mark or a lone character rather than a word.
+    #[must_use]
+    pub fn is_symbolic(&self, place: Place) -> bool {
+        is_symbolic(&self.stream[place.at])
+    }
+
+    /// Whether the input ever wrote one word directly after the other.
+    ///
+    /// This is the licence a composition needs to leave anything out. Running two words together
+    /// that nobody ever wrote together is how a shortened sentence stops being a sentence, and no
+    /// grammar had to be written down to know it: the text is the grammar, and a join it never
+    /// made is a join it does not vouch for.
+    #[must_use]
+    pub fn writes(&self, before: Word, after: Word) -> bool {
+        self.follows.contains_key(&(before.0, after.0))
+    }
+
+    /// Every whole sentence the input wrote about this property, in the order it wrote them.
+    ///
+    /// A sentence here is exactly what the input punctuated as one: a run of its tokens ending at
+    /// the mark this text finishes sentences with. Runs that reach the end of a passage without
+    /// that mark are left out, because a heading, a table row and a signature are not sentences,
+    /// and nothing that lifts them into one can say afterwards that a person wrote them.
+    #[must_use]
+    pub fn sentences_in(&self, feature: Feature, most: usize) -> Vec<Vec<Place>> {
+        let mut sentences = Vec::new();
+        for (start, end, features) in &self.passages {
+            if !features.contains(&feature) {
+                continue;
+            }
+            let mut run: Vec<Place> = Vec::new();
+            for (offset, token) in self.stream[*start..*end].iter().enumerate() {
+                let at = start + offset;
+                run.push(Place {
+                    word: Word(token.word),
+                    at,
+                    span: token.span,
+                    glued: token.attached,
+                });
+                // The end of a passage is the end of a sentence when it is punctuated as one.
+                // What follows in the stream is a different note about a different thing, and
+                // whether that note happens to begin with a capital says nothing about this one.
+                let finished = self.ends_sentence(at)
+                    || (at + 1 == *end
+                        && self.terminators.contains(&token.word)
+                        && !self.spells_with(
+                            run.get(run.len().wrapping_sub(2))
+                                .map_or(usize::MAX, |place: &Place| place.word.0),
+                            token.word,
+                        ));
+                if finished {
+                    sentences.push(std::mem::take(&mut run));
+                    if sentences.len() >= most {
+                        return sentences;
+                    }
+                }
+            }
+        }
+        sentences
     }
 
     /// The lengths of the sentences it read, in tokens, shortest first.
@@ -652,7 +798,41 @@ impl Corpus {
         if !self.terminators.contains(&token.word) {
             return false;
         }
-        self.stream.get(index + 1).is_none_or(|next| next.capital)
+        if !self.stream.get(index + 1).is_none_or(|next| next.capital) {
+            return false;
+        }
+        // A mark that a word is written with every time it is written belongs to that word rather
+        // than to the sentence. Nothing here knows what an abbreviation is: it knows that a text
+        // which writes a word and then that mark on all but a hair of the occasions it writes the
+        // word at all is a text spelling the word, and that a word which really ends sentences is
+        // also written without one somewhere. Reading the mark as an end there cuts the sentence
+        // in half and reports the half as if somebody had written it.
+        index
+            .checked_sub(1)
+            .and_then(|before| self.stream.get(before))
+            .is_none_or(|before| !self.spells_with(before.word, token.word))
+    }
+
+    /// Whether this mark is part of how this word is spelt, rather than punctuation after it.
+    ///
+    /// Nothing here knows what an abbreviation is. It knows that a word written with the mark on
+    /// every single occasion it is written at all is a word being spelt, provided the text is
+    /// long enough with the word for "every occasion" to mean anything: a word seen twice ending
+    /// both times is nothing, and a word seen forty times ending forty times is a spelling. Where
+    /// that line falls is the text's to draw, and it draws it by how often the mark follows
+    /// anything at all — the run has to be one this text would not have thrown up by chance.
+    // A count of words in a text. A count large enough to lose a bit here is a text nobody
+    // has, and a rate taken from one reads the same either way.
+    #[allow(clippy::cast_precision_loss)]
+    fn spells_with(&self, word: usize, mark: usize) -> bool {
+        let seen = f64::from(self.vocabulary[word].seen);
+        let together = f64::from(self.follows.get(&(word, mark)).copied().unwrap_or(0));
+        if together < seen {
+            return false;
+        }
+        let tokens = self.stream.len().max(1) as f64;
+        let base = f64::from(self.vocabulary[mark].seen) / tokens;
+        base.powf(seen) * tokens < 1.0
     }
 
     /// How often a token in this text is written with a leading capital.
@@ -668,6 +848,15 @@ impl Corpus {
     }
 
     /// Count which word follows which, and which words open and close sentences.
+    /// Count every pair of tokens written one after the other, before sentences are known.
+    fn count_adjacency(&mut self) {
+        let mut counts: BTreeMap<(usize, usize), u32> = BTreeMap::new();
+        for pair in self.stream.windows(2) {
+            *counts.entry((pair[0].word, pair[1].word)).or_insert(0) += 1;
+        }
+        self.follows = counts;
+    }
+
     fn count_transitions(&mut self) {
         let terminators = self.terminators.clone();
         let mut opening = true;

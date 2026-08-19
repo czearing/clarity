@@ -8,9 +8,10 @@
 //!
 //! Two searches from [fitkit](https://github.com/czearing/fitkit) do all of the deciding. A
 //! subset search over the claims fixes what is worth stating, and therefore how many clauses
-//! there are. A path search over the vocabulary fixes the words of each clause, and therefore how
-//! long it is. Neither is handed the answer it is scoring, so neither can return something
-//! prepared.
+//! there are. A path search over the input's own text fixes what each clause says: its states are
+//! the places of one sentence the input wrote about that part, and its path runs through them in
+//! the order they were written. So a clause is a sentence somebody wrote, reported whole, and the
+//! engine's decisions are decisions about which sentence rather than about language.
 //!
 //! ```
 //! use clarity_say::{compose, Claim, Corpus, Feature};
@@ -18,9 +19,9 @@
 //!
 //! let mut corpus = Corpus::new();
 //! let absent = Feature::of("absent");
-//! corpus.attach(&[absent], "the answer may be missing.", Span::new(0, 26));
-//! corpus.attach(&[absent], "the value may be missing.", Span::new(26, 51));
-//! corpus.observe("a reader checks the file.", Span::new(51, 76));
+//! corpus.attach(&[absent], "The answer may be missing. Nothing stands in for it.", Span::new(0, 52));
+//! corpus.attach(&[absent], "The value may be missing. A reader is told so.", Span::new(52, 97));
+//! corpus.observe("A reader checks the file. The file says what it holds.", Span::new(97, 150));
 //! corpus.settle();
 //!
 //! let claim = Claim::new(absent, Evidence::certain(Span::new(0, 26), 1.0)).unwrap();

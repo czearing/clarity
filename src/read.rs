@@ -90,7 +90,7 @@ pub fn read_tree(root: &Path) -> Answer<Reading> {
                         .map(|finding| shape_of(&finding.fact))
                         .collect(),
                     name: split(&piece.name),
-                    doc: piece.doc.join(" "),
+                    doc: parted(&piece.doc),
                     documented: piece.documented,
                 })
                 .collect()
@@ -106,8 +106,13 @@ pub fn read_tree(root: &Path) -> Answer<Reading> {
             corpus.attach(&features, &item.name, Span::new(at, at + item.name.len()));
             at += item.name.len();
             if item.documented {
-                corpus.attach(&features, &item.doc, Span::new(at, at + item.doc.len()));
-                at += item.doc.len();
+                // A paragraph at a time, because a break between paragraphs is a break the author
+                // put there. Run them together and a heading joins the sentence beneath it, and
+                // the engine reports a line no author wrote as though one had.
+                for paragraph in &item.doc {
+                    corpus.attach(&features, paragraph, Span::new(at, at + paragraph.len()));
+                    at += paragraph.len();
+                }
                 spoken += 1;
             }
         }
@@ -217,9 +222,29 @@ struct Item {
     shapes: Vec<Feature>,
     /// The words the author built the name out of.
     name: String,
-    /// What the author wrote about it.
-    doc: String,
+    /// What the author wrote about it, in the paragraphs they wrote it in.
+    doc: Vec<String>,
     documented: bool,
+}
+
+/// The paragraphs of a note, which are the runs of lines its author left unbroken.
+fn parted(lines: &[String]) -> Vec<String> {
+    let mut paragraphs = Vec::new();
+    let mut run: Vec<&str> = Vec::new();
+    for line in lines {
+        if line.trim().is_empty() {
+            if !run.is_empty() {
+                paragraphs.push(run.join(" "));
+                run.clear();
+            }
+            continue;
+        }
+        run.push(line);
+    }
+    if !run.is_empty() {
+        paragraphs.push(run.join(" "));
+    }
+    paragraphs
 }
 
 /// Read a file in any language by the one convention every language shares: a note written above
@@ -236,9 +261,7 @@ fn commented(source: &str) -> Vec<Item> {
     for line in source.lines() {
         let trimmed = line.trim();
         if let Some(said) = uncomment(trimmed) {
-            if !said.is_empty() {
-                note.push(said);
-            }
+            note.push(said);
             continue;
         }
         if trimmed.is_empty() {
@@ -254,7 +277,7 @@ fn commented(source: &str) -> Vec<Item> {
             note.clear();
             continue;
         }
-        let doc = std::mem::take(&mut note).join(" ");
+        let doc = parted(&std::mem::take(&mut note));
         let documented = !doc.is_empty();
         items.push(Item {
             kind,

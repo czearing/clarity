@@ -12,7 +12,7 @@ use fitkit::{
     decode_path_parts, optimise_subset_parts, Answer, Confidence, Evidence, Refusal, Span, Terms,
 };
 
-use crate::corpus::{Corpus, Feature};
+use crate::corpus::{Corpus, Feature, Place};
 use crate::said::{Clause, Said, Slot};
 
 /// Something worth saying, and what stands behind saying it.
@@ -86,14 +86,8 @@ const AFFORDABLE: usize = 20;
 
 const IMPOSSIBLE: f64 = 1.0e6;
 
-/// How many places in the input one clause may pick its words from.
-const PLACES: usize = 240;
-
 /// The shortest clause worth composing, in positions offered to the search.
 const SHORTEST: usize = 3;
-
-/// The longest, however long the input's own sentences run.
-const LONGEST: usize = 24;
 
 /// Say what is worth saying about these claims, in the words of the corpus.
 ///
@@ -125,9 +119,26 @@ pub fn compose(corpus: &Corpus, claims: &[Claim], most: usize) -> Answer<Said> {
         ));
     }
 
-    let terms = declare(corpus, claims, most)?;
+    // A part the input wrote no more than a line about is a caption, an entry in a list or a
+    // heading, and the one sentence there is to take from it was never a description of anything.
+    // A part the input never wrote a finished sentence about is a part there is nothing to report
+    // about, and both are dropped here rather than refused later. Refusing later would throw away the
+    // whole document over one heading; reporting it anyway would mean writing the sentence, which
+    // is the one thing this cannot do.
+    let sayable: Vec<Claim> = claims
+        .iter()
+        .filter(|claim| candidates(corpus, claim.feature).nth(1).is_some())
+        .copied()
+        .collect();
+    if sayable.is_empty() {
+        return Err(Refusal::unreported(
+            "the input never wrote a finished sentence about any of its parts",
+        ));
+    }
+
+    let terms = declare(corpus, &sayable, most)?;
     let chosen =
-        optimise_subset_parts(&terms, AFFORDABLE, 64, |item| clause(corpus, claims[item]))?;
+        optimise_subset_parts(&terms, AFFORDABLE, 64, |item| clause(corpus, sayable[item]))?;
     Ok(Said::from_search(chosen))
 }
 
@@ -192,150 +203,151 @@ fn reach(first: Span, second: Span) -> Span {
     Span::new(first.start.min(second.start), first.end.max(second.end))
 }
 
-/// What it costs to have stopped at each step, taken from how long this text's sentences run.
+/// How many of the input's own sentences about one claim are weighed before one is chosen.
+const CONSIDERED: usize = 400;
+
+/// How many of the best are actually decoded, when the best cannot be shortened into a clause.
+const TRIED: usize = 12;
+
+/// The longest sentence worth reporting: past this a reader is being handed a paragraph.
+const WHOLE: usize = 40;
+
+/// Compose one clause about one claim out of a sentence the input wrote about it.
 ///
-/// Without this, stopping is free and continuing is not: every further word is another
-/// probability below one, so the cheapest reading of any text is the shortest one it can get away
-/// with, and the engine writes four words and a full stop. The costs here are laid out so that
-/// whatever step a clause stops at, the silences that follow it sum to what it costs to be a
-/// sentence of that length in this text. Length is then a decision the search makes against
-/// evidence rather than something that falls out of the arithmetic.
-// A count of the sentences in a text. A count large enough to lose a bit here is a text nobody
-// has, and a share taken from one reads the same either way.
-#[allow(clippy::cast_precision_loss)]
-fn stopping(lengths: &[usize], steps: usize) -> Vec<f64> {
-    let mut counted = vec![0.0; steps + 1];
-    for &length in lengths {
-        if let Some(slot) = counted.get_mut(length.min(steps)) {
-            *slot += 1.0;
+/// The states are the places of one of the input's own sentences, and one silence. A step to the
+/// next place keeps what was written; a step past a place leaves it out, and is allowed only
+/// where the input itself has written the two words that would then meet. So a clause is either
+/// a sentence somebody wrote or that sentence shortened at joins the same text vouches for, and
+/// producing a string of words nobody ever put together is not something this can express.
+///
+/// Nothing here holds a sentence, and no grammar is written down. Which sentence to say is a
+/// measurement of how much the sentence says about the claim; how much of it to say is the path
+/// search, priced against how long this text's sentences run.
+fn clause(corpus: &Corpus, claim: Claim) -> Answer<Clause> {
+    let sentences = corpus.sentences_in(claim.feature, CONSIDERED);
+    let mut ranked: Vec<(f64, &Vec<Place>)> = candidates_of(corpus, &sentences)
+        .map(|sentence| (worth(corpus, claim.feature, sentence), sentence))
+        .collect();
+    ranked.sort_by(|a, b| b.0.total_cmp(&a.0));
+    for (_, sentence) in ranked.iter().take(TRIED) {
+        if let Ok(said) = say(corpus, claim.feature, sentence) {
+            return Ok(said);
         }
     }
-    // A length this text never used is not a length it cannot use, and a search that meets an
-    // impossibility where it should meet a cost has nowhere to go.
-    let total: f64 = counted.iter().sum::<f64>() + counted.len() as f64;
-    let share: Vec<f64> = counted.iter().map(|count| (count + 1.0) / total).collect();
-    let mut costs = vec![0.0; steps];
-    for step in (0..steps).rev() {
-        costs[step] = if step + 1 == steps {
-            -share[step].ln()
-        } else {
-            (share[step + 1] / share[step]).ln()
-        };
-    }
-    costs
+    Err(Refusal::unreported(
+        "the input says nothing about this in a sentence it finished",
+    ))
 }
 
-/// Compose one clause about one claim, by decoding a path through the input's own text.
+/// The sentences about a property that are long enough to say something and short enough to read.
+fn candidates(corpus: &Corpus, feature: Feature) -> impl Iterator<Item = Vec<Place>> + '_ {
+    corpus
+        .sentences_in(feature, CONSIDERED)
+        .into_iter()
+        .filter(|sentence| worth_reading(corpus, sentence))
+}
+
+/// The same test, over sentences already read.
+fn candidates_of<'a>(
+    corpus: &'a Corpus,
+    sentences: &'a [Vec<Place>],
+) -> impl Iterator<Item = &'a Vec<Place>> {
+    sentences
+        .iter()
+        .filter(|sentence| worth_reading(corpus, sentence))
+}
+
+/// Whether a sentence is one this text wrote as prose rather than as a table or a reference.
 ///
-/// The states are places in the input where a word bearing on the claim was read, and one
-/// silence. A step may only move forward through the input, so a clause is a subsequence of what
-/// somebody actually wrote: it can leave words out and it can splice one passage to another, but
-/// it can never come back to a place it has already used. That is what makes saying the same
-/// thing twice unrepresentable rather than merely expensive.
+/// Long enough to say something, short enough to read, and written in no more marks and lone
+/// characters than this author writes in. That last is what separates a sentence from a row of a
+/// table, a line of mathematics and an entry in a bibliography, and the line between them is the
+/// author's own rate rather than any judgement made here about what those things look like.
+// A count of words in a sentence.
+#[allow(clippy::cast_precision_loss)]
+fn worth_reading(corpus: &Corpus, sentence: &[Place]) -> bool {
+    if sentence.len() < SHORTEST || sentence.len() > WHOLE {
+        return false;
+    }
+    let marks = sentence
+        .iter()
+        .filter(|place| corpus.is_symbolic(**place))
+        .count();
+    marks as f64 / sentence.len() as f64 <= corpus.marking_rate()
+}
+
+/// How much a sentence says about a property, against how much of the reader it costs.
 ///
-/// Silence is absorbing, so where a clause stops is a decision the search made.
-fn clause(corpus: &Corpus, claim: Claim) -> Answer<Clause> {
-    let places = corpus.places_in(claim.feature, PLACES);
-    if places.is_empty() {
-        return Err(Refusal::unreported(
-            "the input never says anything about this",
-        ));
+/// A sentence full of the words this property is characteristic of is a sentence about it, and
+/// what is wanted is the one that says most. Divided by the root of its length rather than by its
+/// length: dividing outright hands the answer to whichever three words are most characteristic,
+/// and dividing by nothing hands it to the longest paragraph in the file. Between those, a
+/// sentence earns its length by carrying something in it.
+// A count of words in a text. A count large enough to lose a bit here is a text nobody has, and a
+// rate taken from one reads the same either way.
+#[allow(clippy::cast_precision_loss)]
+fn worth(corpus: &Corpus, feature: Feature, sentence: &[Place]) -> f64 {
+    let mut total = 0.0;
+    let mut counted = 0usize;
+    let mut said: Vec<crate::corpus::Word> = Vec::new();
+    for place in sentence {
+        if corpus.is_marking(place.word()) {
+            continue;
+        }
+        counted += 1;
+        // Once each. A sentence that repeats the one characteristic word it has is not more about
+        // the property than a sentence that uses it once and then says something.
+        if said.contains(&place.word()) {
+            continue;
+        }
+        said.push(place.word());
+        total += corpus.affinity(feature, place.word()).max(NEUTRAL).ln();
     }
-    let lengths = corpus.lengths();
-    if lengths.is_empty() {
-        return Err(Refusal::unreported(
-            "the input holds no sentence to learn a length from",
-        ));
+    if counted == 0 {
+        return 0.0;
     }
+    total / (counted as f64).sqrt()
+}
+
+/// Say one sentence of the input, as the input wrote it.
+///
+/// The path runs through the places of that sentence and may not leave any of them out. Leaving
+/// one out was tried and abandoned: a join both words have been written with elsewhere is not a
+/// join that holds here, and shortening what somebody wrote changes what they said while keeping
+/// their name on it. What is decided here is which sentence, and that decision is a measurement.
+fn say(corpus: &Corpus, feature: Feature, places: &[Place]) -> Answer<Clause> {
+    let last = places.len() - 1;
+    let steps = places.len();
     let silence = places.len();
     let states = silence + 1;
-    let steps = corpus.typical_length().clamp(SHORTEST, LONGEST);
-    let ending: Vec<bool> = places
-        .iter()
-        .map(|place| Some(place.word()) == corpus.terminator())
-        .collect();
-
-    // How much each place says about this claim, measured against how common its word is
-    // anyway. Above one means the text uses this word when this property holds and not
-    // otherwise; at one the word carries no information about it either way.
     let expressive: Vec<f64> = places
         .iter()
-        .map(|place| corpus.affinity(claim.feature, place.word()).max(NEUTRAL))
-        .collect();
-    let opens: Vec<f64> = places
-        .iter()
-        .map(|place| corpus.opens(place.word()))
-        .collect();
-    let closes: Vec<f64> = places
-        .iter()
-        .map(|place| corpus.closes(place.word()))
+        .map(|place| corpus.affinity(feature, place.word()).max(NEUTRAL))
         .collect();
 
-    let stopping = stopping(&lengths, steps);
     let emission = |step: usize, state: usize| -> f64 {
         if state == silence {
-            // A clause that says nothing at all is not a shorter clause, it is the absence of
-            // one. Silence has to be reached from a finished sentence, never chosen instead of
-            // starting one.
-            return if step == 0 {
-                IMPOSSIBLE
-            } else {
-                stopping[step]
-            };
-        }
-        // The last position a clause has must finish it. Everything else is unreachable there, so
-        // a clause cannot simply run out of room mid-sentence: it either reaches the mark this
-        // text ends sentences with, or it has already stopped.
-        if step + 1 == steps && !ending[state] {
+            // Silence is where a clause has finished, never an alternative to a sentence: the
+            // sentence chosen has a beginning and an end of its own, both put there by whoever
+            // wrote it.
             return IMPOSSIBLE;
         }
-        let mut cost = -expressive[state].ln();
-        if step == 0 {
-            cost -= opens[state].ln();
+        if state != step {
+            return IMPOSSIBLE;
         }
-        cost
+        if step + 1 == steps && state != last {
+            return IMPOSSIBLE;
+        }
+        -expressive[state].ln()
     };
 
     let transition = |from: usize, to: usize| -> f64 {
-        match (from == silence, to == silence) {
-            (true, true) => 0.0,
-            (true, false) => IMPOSSIBLE,
-            // A clause ends where the text's own sentences end: after the mark this text uses to
-            // finish one. Where that mark falls is the search's decision, so the length of a
-            // clause is decided by the search and not by anything set down here.
-            (false, true) => {
-                if ending[from] {
-                    -closes[from].ln()
-                } else {
-                    IMPOSSIBLE
-                }
-            }
-            (false, false) => {
-                if places[to].position() <= places[from].position() {
-                    return IMPOSSIBLE;
-                }
-                // Saying a word and then saying it again says nothing the first one did not.
-                // Where the input does this it is a table or a listing rather than a sentence,
-                // and lifting that shape into a sentence reports a repetition as if it were
-                // language.
-                if places[to].word() == places[from].word() {
-                    return IMPOSSIBLE;
-                }
-                // How much likelier this word is after that one than it is anywhere. A pair the
-                // text writes is worth taking and a pair it never writes is not, and neither
-                // judgement needed a number chosen here.
-                //
-                // It is the ratio rather than the probability, and that is what makes length a
-                // decision. Charging the probability outright charges every word its own
-                // surprise, so each further word costs something no matter how well it fits, and
-                // the cheapest reading of any text is the shortest one it can end. Against the
-                // ratio a well placed word is free, and how long a clause runs is left to the one
-                // thing that measured it: how long this text's own sentences run.
-                -corpus
-                    .association(places[from].word(), places[to].word())
-                    .ln()
-            }
+        if from == silence || to == silence || to != from + 1 {
+            return IMPOSSIBLE;
         }
+        -corpus
+            .association(places[from].word(), places[to].word())
+            .ln()
     };
 
     let part = |step: usize, state: usize| -> Slot {
@@ -344,13 +356,9 @@ fn clause(corpus: &Corpus, claim: Claim) -> Answer<Clause> {
         }
         let place = places[state];
         Slot::spoken(
-            corpus.spelling(place.word(), step == 0).to_owned(),
+            corpus.written(place).to_owned(),
             place.source(),
-            // Only a mark is written against the word before it. Whether an ordinary word was
-            // written against its neighbour is a fact about the place it came from, and a clause
-            // that spliced it next to a different word has left that place behind: honouring it
-            // there runs two words into one and reports a token nobody wrote.
-            corpus.is_marking(place.word()) && corpus.is_attached(place.word()) && step > 0,
+            place.is_glued() && step > 0,
         )
     };
 

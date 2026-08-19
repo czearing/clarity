@@ -358,7 +358,14 @@ fn doc_of(attrs: &[syn::Attribute]) -> Vec<String> {
             }
         }
     }
-    lines.retain(|line| !line.is_empty());
+    // The blank lines stay. A break between paragraphs is a break the author put there, and a
+    // note read without them runs its heading into the sentence beneath it.
+    while lines.first().is_some_and(String::is_empty) {
+        lines.remove(0);
+    }
+    while lines.last().is_some_and(String::is_empty) {
+        lines.pop();
+    }
     lines
 }
 
