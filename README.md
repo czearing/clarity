@@ -118,7 +118,7 @@ there is counted, held to that count in both directions, and set out in `docs/LI
 | Faulty sentences repaired to clean | 20 of 20, never more than two swaps |
 | Wasteful sentences named | 12 of 12 |
 | Passages whose conventions were recovered | 5 of 5, and the planted fault caught in each |
-| Faults left in seven hundred units of the crate's own prose | 90, bounded in both directions |
+| Faults left in seven hundred units of the crate's own prose | 93, bounded in both directions |
 
 Every example above is compiled and run as a doctest. Timings are what `cargo bench` reports for
 `benches/read.rs`; on the machine that wrote this, checking a short sentence takes about two
@@ -164,7 +164,13 @@ kind of input lives in `read`, and nothing particular to a kind of input lives a
 
 Two searches settle what appears. A subset search over the claims decides which parts are worth
 stating, weighing what each part holds against how much of it the input actually describes, and
-against how much vocabulary two parts share. A path search over the input's own text decides what
+against how much of what one part would say another has said already. That last term SUBTRACTS.
+Rewarding two parts for sharing vocabulary makes the objective monotone, every claim worth taking,
+and the best subset every claim: the search then decodes a decision that was never in doubt, and
+what comes out is an index rather than a description. What a pair costs is the share of a sentence
+another chosen sentence already said, cubed so that a fifth in common prices at a thousandth and
+all of it in common prices at all of it, and charged against the larger of the two worths so that
+saying a thing twice is strictly worse than saying it once. A path search over the input's own text decides what
 is said about each: the states are the places of one sentence the input wrote about that part, and
 the path runs through them in the order they were written. So a line of the output is a sentence
 somebody wrote, entire, in the words and the spelling and the punctuation they wrote it in.
@@ -218,10 +224,16 @@ out for it.
 The parts of a source tree are its modules rather than its files: a file beside a directory of the
 same name is the same module as what is in it, and a module's own file is read before the files
 under it. Reporting per file names a dozen files out of hundreds, which describes a file system.
-A part whose author wrote a statement about the part itself is trusted at that statement, whatever
-share of the things inside it carry notes of their own, since a repository is mostly data
-structures nobody writes notes about and the weakest part of a report otherwise drags the rest
-down with it.
+A file whose author wrote a note about the FILE is a part in its own right, and that note is kept
+under a key of its own, so what a part says about itself can be asked for without also getting
+every note written about the things inside it. Without that, every file sitting directly in a
+source directory folded into one part holding fifty unrelated topics, and the best sentence such
+a part had was an interior detail: a true note about one function that says nothing about the
+module holding it. A part whose author wrote a statement about the part itself is trusted at that
+statement, whatever share of the things inside it carry notes of their own, since a repository is
+mostly data structures nobody writes notes about and the weakest part of a report otherwise drags
+the rest down with it. A part with no such statement still stands, trusted at one over the number
+of notes it holds, which is the chance that an arbitrary interior note describes the whole.
 
 Where a sentence ends had one more thing to learn: a mark that a word is written with every single
 time that word appears is part of how the word is spelt, not the end of anything. Nothing here

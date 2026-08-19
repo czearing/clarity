@@ -24,9 +24,19 @@ use crate::said::{Clause, Said, Slot};
 pub struct Claim {
     feature: Feature,
     weight: Evidence<f64>,
+    /// Where the part describes itself, when the input keeps that apart from what it contains.
+    describing: Option<Feature>,
 }
 
 impl Claim {
+    /// State where this part describes itself, so that a note about something inside it cannot
+    /// stand in for a description of it.
+    #[must_use]
+    pub const fn described_by(mut self, describing: Feature) -> Self {
+        self.describing = Some(describing);
+        self
+    }
+
     /// A claim about a property, worth stating to the degree its evidence supports it.
     ///
     /// # Errors
@@ -44,7 +54,11 @@ impl Claim {
                 "a claim's worth must be a finite quantity",
             ));
         }
-        Ok(Self { feature, weight })
+        Ok(Self {
+            feature,
+            weight,
+            describing: None,
+        })
     }
 
     /// The property claimed.
@@ -127,7 +141,7 @@ pub fn compose(corpus: &Corpus, claims: &[Claim], most: usize) -> Answer<Said> {
     // is the one thing this cannot do.
     let sayable: Vec<Claim> = claims
         .iter()
-        .filter(|claim| candidates(corpus, claim.feature).next().is_some())
+        .filter(|claim| clause(corpus, **claim).is_ok())
         .copied()
         .collect();
     if sayable.is_empty() {
@@ -178,14 +192,35 @@ fn parted(corpus: &Corpus, stated: &[Feature]) -> Vec<usize> {
 /// Every number here arrives as evidence. The worth of a claim is the caller's, discounted by the
 /// trust the caller holds it with; the worth of a pair is measured in the input, from how much
 /// vocabulary the two properties share. Nothing is tuned, because there is nothing here to tune.
+///
+/// A pair SUBTRACTS. Saying a thing twice in the same words is worth less than saying it once,
+/// so two claims drawn from the same vocabulary cost the search what the second of them repeats.
+/// That is the whole reason a subset is searched for at all: with a positive pair term every
+/// claim is worth taking, the best subset is every claim, and the search decodes a decision that
+/// was never in doubt. It was positive here, and the document it produced was an index — thirty
+/// three near-identical lines, because an index is exactly what a monotone objective asks for.
+/// The penalty is the shared fraction of the smaller worth, so two claims that repeat each other
+/// entirely are worth one of them, and a claim that repeats nothing pays nothing.
 fn declare(corpus: &Corpus, claims: &[Claim], most: usize) -> Answer<Terms> {
     let mut terms = Terms::over(claims.len())?;
     for (position, claim) in claims.iter().enumerate() {
         terms = terms.worth(position, claim.weight)?;
     }
+    // What each claim would say, so that what it costs to say two of them is measured over the
+    // sentences themselves rather than over a summary of the parts they came from.
+    let leading: Vec<Vec<Place>> = claims
+        .iter()
+        .map(|claim| {
+            let sentences =
+                corpus.sentences_in(claim.describing.unwrap_or(claim.feature), CONSIDERED);
+            ordered(corpus, claim.feature, &sentences)
+                .first()
+                .map_or_else(Vec::new, |sentence| (*sentence).clone())
+        })
+        .collect();
     for (a, first) in claims.iter().enumerate() {
         for (b, second) in claims.iter().enumerate().skip(a + 1) {
-            let shared = shared_vocabulary(corpus, first.feature, second.feature);
+            let shared = repetition(corpus, &leading[a], &leading[b]);
             if shared <= 0.0 {
                 continue;
             }
@@ -194,7 +229,23 @@ fn declare(corpus: &Corpus, claims: &[Claim], most: usize) -> Answer<Terms> {
             if span.is_empty() || trust.is_zero() {
                 continue;
             }
-            terms = terms.together(a, b, Evidence::new(span, trust, shared))?;
+            // Cubed, because what is being priced is a sentence that is ALREADY SAID, not one
+            // that happens to share some words. A claim sits in as many pairs as there are other
+            // claims, so a penalty linear in the overlap grows with the square of the pool while
+            // worth grows with the pool: at thirty-eight claims, an unremarkable fifth of the
+            // words in common between every pair outweighed every worth there was and the best
+            // subset was the empty one -- a document of no lines. Spreading the penalty over the
+            // pool instead was worse in the other direction: twelve modules with the SAME summary
+            // line came to exactly break even, and the document stated it twelve times over. A
+            // fifth in common is not a repetition and prices at a thousandth; all of it in common
+            // is, and prices at all of it.
+            // Against the LARGER of the two worths, so that two claims that repeat each other
+            // entirely are worth strictly LESS than either alone. Priced against the smaller,
+            // stating both came to exactly what stating one came to, and which of the two the
+            // search returned was then decided by the order the sums happened to be added in:
+            // the same input described one way in a release build and another way in a debug one.
+            let repeated = shared * shared * shared * first.weight.value.max(second.weight.value);
+            terms = terms.together(a, b, Evidence::new(span, trust, -repeated))?;
         }
     }
     if most > 0 && most < claims.len() {
@@ -255,7 +306,7 @@ const WHOLE: usize = 40;
 /// measurement of how much the sentence says about the claim; how much of it to say is the path
 /// search, priced against how long this text's sentences run.
 fn clause(corpus: &Corpus, claim: Claim) -> Answer<Clause> {
-    let sentences = corpus.sentences_in(claim.feature, CONSIDERED);
+    let sentences = corpus.sentences_in(claim.describing.unwrap_or(claim.feature), CONSIDERED);
     // Two structural facts about where a sentence was written, and no judgement about what it
     // says. An author opens a paragraph with the sentence that says what the paragraph is about,
     // and writes the sentence that says what the whole part is about before the ones that go into
@@ -263,8 +314,29 @@ fn clause(corpus: &Corpus, claim: Claim) -> Answer<Clause> {
     // What was tried before this and abandoned was ranking by how characteristic a sentence's
     // words are, which selects the most unusual sentence in a part. That is the opposite of an
     // orienting one, and it produced documents made of interior detail.
-    let about: Vec<&Vec<Place>> = candidates_of(corpus, &sentences)
-        .filter(|sentence| about_it(corpus, claim.feature, sentence))
+    let considered = ordered(corpus, claim.feature, &sentences);
+    for sentence in considered.iter().take(TRIED) {
+        if let Ok(said) = say(corpus, claim.feature, sentence) {
+            return Ok(said);
+        }
+    }
+    Err(Refusal::unreported(
+        "the input says nothing about this in a sentence it finished",
+    ))
+}
+
+/// The sentences that could stand for a part, best first.
+///
+/// Split out so that what a part would say is known before the search decides whether to say it.
+/// The cost of stating two parts together is measured over these very sentences, so the evidence
+/// the search is given and the text it later decodes cannot drift apart.
+fn ordered<'a>(
+    corpus: &'a Corpus,
+    feature: Feature,
+    sentences: &'a [Vec<Place>],
+) -> Vec<&'a Vec<Place>> {
+    let about: Vec<&Vec<Place>> = candidates_of(corpus, sentences)
+        .filter(|sentence| about_it(corpus, feature, sentence))
         .collect();
     let opening: Vec<&Vec<Place>> = about
         .iter()
@@ -277,7 +349,7 @@ fn clause(corpus: &Corpus, claim: Claim) -> Answer<Clause> {
         .collect();
     let mut considered: Vec<&Vec<Place>> = if opening.is_empty() {
         if about.is_empty() {
-            candidates_of(corpus, &sentences).collect()
+            candidates_of(corpus, sentences).collect()
         } else {
             about
         }
@@ -289,14 +361,47 @@ fn clause(corpus: &Corpus, claim: Claim) -> Answer<Clause> {
             .first()
             .map_or(usize::MAX, |place| place.position())
     });
-    for sentence in considered.iter().take(TRIED) {
-        if let Ok(said) = say(corpus, claim.feature, sentence) {
-            return Ok(said);
+    considered
+}
+
+/// How much of what one sentence says has already been said by another.
+///
+/// Measured over the words themselves, each carrying as much weight as it is rare in this text,
+/// so a word both sentences share because everyone shares it counts for almost nothing and a word
+/// they share because they are about the same thing counts for a great deal. No list of common
+/// words exists here: how common a word is is a rate this text was measured for.
+///
+/// This is deliberately not the characteristic vocabulary the passages are grouped by. That set
+/// keeps only words rare elsewhere, which excludes precisely the words a formulaic repository
+/// repeats in every module, so it reports two near-identical lines as unrelated. A reader sees
+/// the repetition whether or not it is statistically distinctive.
+// Counts of words in a text, and a rate taken from one.
+#[allow(clippy::cast_precision_loss)]
+fn repetition(corpus: &Corpus, first: &[Place], second: &[Place]) -> f64 {
+    let weigh = |place: &Place| {
+        if corpus.is_symbolic(*place) {
+            return 0.0;
         }
+        let rate = corpus.commonness(place.word());
+        if rate <= 0.0 {
+            0.0
+        } else {
+            -rate.ln()
+        }
+    };
+    let carried = |sentence: &[Place]| sentence.iter().map(weigh).sum::<f64>();
+    let left = carried(first);
+    let right = carried(second);
+    if left <= 0.0 || right <= 0.0 {
+        return 0.0;
     }
-    Err(Refusal::unreported(
-        "the input says nothing about this in a sentence it finished",
-    ))
+    let held: Vec<crate::Word> = second.iter().map(|place| place.word()).collect();
+    let common: f64 = first
+        .iter()
+        .filter(|place| held.contains(&place.word()))
+        .map(weigh)
+        .sum();
+    (common / left.min(right)).min(1.0)
 }
 
 /// Whether a sentence is about the part it was found in, rather than merely inside it.
@@ -313,14 +418,6 @@ fn about_it(corpus: &Corpus, feature: Feature, sentence: &[Place]) -> bool {
     sentence
         .iter()
         .any(|place| characteristic.contains(&place.word()))
-}
-
-/// The sentences about a property that are long enough to say something and short enough to read.
-fn candidates(corpus: &Corpus, feature: Feature) -> impl Iterator<Item = Vec<Place>> + '_ {
-    corpus
-        .sentences_in(feature, CONSIDERED)
-        .into_iter()
-        .filter(|sentence| worth_reading(corpus, sentence))
 }
 
 /// The same test, over sentences already read.

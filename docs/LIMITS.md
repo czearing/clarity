@@ -751,3 +751,48 @@ a word the lexicon reads only as one.
 
 None of the three was reachable from the crate's own tests, because a test asks the engine whether
 it agrees with itself. Reading real output is what found all three.
+
+## A pairwise term that rewarded repetition
+
+The subset search that chooses which parts to state weighed a pair of claims that share
+vocabulary as a bonus. That makes the objective monotone: every claim is worth taking, no claim is
+worth dropping, and the best subset is always every claim. The search then decoded a decision
+that was never in doubt, and the document it produced was an index — thirty-three lines saying
+near enough the same thing, which is exactly what a monotone objective asks for.
+
+The pair now subtracts. What it subtracts is the share of a sentence that another chosen sentence
+already said, weighed word by word against how common each word is in the input, so that a word
+the input repeats everywhere counts for little and a word it uses in two places counts for a lot.
+
+Getting the size of that subtraction right took three attempts and two failures worth recording.
+Priced linearly in the overlap, the penalty grew with the square of the pool while worth grew with
+the pool: at thirty-eight claims an unremarkable fifth of the words in common between every pair
+outweighed every worth there was, the best subset was the empty one, and the tool printed nothing
+at all. Spread over the pool instead, twelve modules carrying the same summary line came to
+exactly break even and the document stated it twelve times. The overlap is now cubed, so a fifth
+in common prices at a thousandth and all of it in common prices at all of it.
+
+The penalty is also taken against the LARGER of the two worths rather than the smaller. Against
+the smaller, stating two identical claims came to exactly what stating one came to. The two were
+tied, which of them came back was decided by the order the sums happened to be added in, and the
+same input was described one way by a release build and another way by a debug one.
+
+## A file is described by what its author wrote about the file
+
+A part used to be a directory, so every file sitting directly in `src` was folded into one part
+holding fifty unrelated topics. A part like that has no sentence describing it, and what the
+search found instead was the earliest note inside it: `Compute every pairwise edge.` is a true
+note about one function and says nothing about the module holding it.
+
+A file whose author wrote a note about the FILE is now a part in its own right, and that note is
+kept under a key of its own so that what a part says about itself can be asked for without also
+getting every note written about the things inside it. A file with no such note still stands, and
+is still described by the best note inside it — but it is trusted at one over the number of notes
+there are, which is the chance that an arbitrary interior note happens to describe the whole.
+Refusing such a part outright was tried first and was wrong: a repository whose author documented
+every function and no module is an ordinary repository, and it was written about in silence.
+
+For a language with no module-note mark of its own, the note a file opens with — before anything
+is declared, and separated from the first declaration by a blank line — is read as the file's
+note. The blank line is load-bearing. A note written hard against a declaration is that
+declaration's note, whatever it happens to be about.

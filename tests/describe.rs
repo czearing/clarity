@@ -43,6 +43,14 @@ fn tree(name: &str, files: &[(&str, &str)]) -> PathBuf {
 /// sitting in this file. The crate audits its own prose by reading every doc comment in every file
 /// under it, and a fixture written out in full would put these sentences into that audit.
 const RUST: [&str; 2] = ["///", ""];
+
+/// The two marks Rust writes a note about a whole file with, and a note about one thing with.
+///
+/// Held here for the same reason as the pair above: a fixture with these marks written out at the
+/// start of a line is a doc comment as far as this crate's own prose audit is concerned, and the
+/// audit would then read the fixture's line continuations as words nobody wrote.
+const MODULE: &str = concat!("//", "!");
+const ITEM: &str = concat!("//", "/");
 const TYPESCRIPT: [&str; 2] = ["*", "/**"];
 
 /// What each language declares the two things below as.
@@ -394,6 +402,62 @@ fn what_comes_out_is_a_document_of_passages_and_not_a_list_of_lines() {
             assert!(
                 matches!(closing, '.' | '!' | '?' | '"' | ')' | '`'),
                 "a clause stops without finishing: {text:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_repository_that_says_one_thing_many_times_is_not_reported_many_times() {
+    // Twelve files whose authors wrote almost the same summary line. Nothing marks them as
+    // duplicates: each is a true, finished, distinct sentence about a real part, and every one of
+    // them is worth stating on its own. What must not happen is that all twelve are stated.
+    let subjects = [
+        "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa",
+        "lambda", "mu",
+    ];
+    let files: Vec<(String, String)> = subjects
+        .iter()
+        .map(|subject| {
+            let doc = [
+                format!("{MODULE} A bounded store of records held for the {subject} service."),
+                MODULE.to_owned(),
+                format!(
+                    "{MODULE} Records are written once and are held until they expire. Nothing"
+                ),
+                format!("{MODULE} outside this module reaches them, and the expiry clock is the"),
+                format!("{MODULE} only thing that removes one."),
+                String::new(),
+                format!("{ITEM} Put a record in, returning the position it was written at."),
+                "pub fn put() -> usize { 0 }".to_owned(),
+                String::new(),
+                format!("{ITEM} Read the record at a position, if one is still held there."),
+                "pub fn get() -> Option<usize> { None }".to_owned(),
+            ];
+            (format!("{subject}.rs"), doc.join("\n"))
+        })
+        .collect();
+    let borrowed: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(name, source)| (name.as_str(), source.as_str()))
+        .collect();
+    let home = tree("repetition", &borrowed);
+    let reading = read_tree(&home).expect("a tree the engine can read");
+    let said = compose(reading.corpus(), reading.claims(), MOST_CLAIMS).expect("something to say");
+    let written = lines(&said);
+    assert!(
+        !written.is_empty(),
+        "a repository that repeats itself was written about in silence"
+    );
+    for (position, line) in written.iter().enumerate() {
+        for other in written.iter().skip(position + 1) {
+            let mine: Vec<&str> = line.split_whitespace().collect();
+            let theirs: Vec<&str> = other.split_whitespace().collect();
+            let shared = mine.iter().filter(|word| theirs.contains(word)).count();
+            let smaller = mine.len().min(theirs.len());
+            assert!(
+                shared * 2 <= smaller,
+                "two lines of the document say the same thing: {line:?} and {other:?}"
             );
         }
     }

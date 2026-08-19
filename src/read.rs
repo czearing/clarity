@@ -56,6 +56,8 @@ struct Part {
     depth: usize,
     /// Whether the part carries a statement its author wrote about the part itself.
     describes_itself: bool,
+    /// The part's own description, kept apart from everything written inside it.
+    own: Feature,
 }
 
 /// Read a tree of source files: its parts are its files, and its words are its authors'.
@@ -98,7 +100,6 @@ pub fn read_tree(root: &Path) -> Answer<Reading> {
             continue;
         };
         let start = at;
-        let feature = part_of(&path);
         let items = if path.extension().and_then(|end| end.to_str()) == Some("rs") {
             findings(&source)
                 .into_iter()
@@ -121,8 +122,20 @@ pub fn read_tree(root: &Path) -> Answer<Reading> {
         let describes_itself = items
             .first()
             .is_some_and(|item| item.kind == Feature::of("file") && item.documented);
+        // A file whose author wrote a description OF THE FILE is a unit somebody describes, so it
+        // is a part in its own right. Folding it into its directory is what merged fifty
+        // unrelated topics into one part, and a part built out of fifty topics has no describing
+        // sentence to find: whatever wins is a detail from inside one of them.
+        let feature = part_of(&path, describes_itself);
+        let own = describing(&path, describes_itself);
         for item in &items {
             let mut features = vec![feature, item.kind];
+            // The part's description of itself is kept under a key of its own, so that what a
+            // part says about itself can be asked for without also getting every note written
+            // about the things inside it.
+            if item.kind == Feature::of("file") {
+                features.push(own);
+            }
             features.extend(item.shapes.iter().copied());
             // The name its author chose is evidence about the item, in words a reader already
             // associates with it.
@@ -155,7 +168,10 @@ pub fn read_tree(root: &Path) -> Answer<Reading> {
                 weight: pieces.len(),
                 spoken,
                 describes_itself,
-                depth: module_of(&path).matches(std::path::MAIN_SEPARATOR).count(),
+                own,
+                depth: module_of(&path, describes_itself)
+                    .matches(std::path::MAIN_SEPARATOR)
+                    .count(),
             });
         }
     }
@@ -188,6 +204,7 @@ pub fn read_prose(text: &str) -> Answer<Reading> {
             spoken: weight,
             depth: 0,
             describes_itself: true,
+            own: feature,
         });
     }
     settle(corpus, &parts)
@@ -224,6 +241,13 @@ fn settle(mut corpus: Corpus, parts: &[Part]) -> Answer<Reading> {
             .then(b.spoken.cmp(&a.spoken))
             .then(a.span.start.cmp(&b.span.start))
     });
+    // How much of what this input says about itself is said in this part. Without it every part
+    // is priced only by the SHARE of itself its author described, so a two-line helper that is
+    // fully documented outranks a module of two hundred things that is well documented, and the
+    // document fills up with internal odds and ends. This is not a size ranking: material nobody
+    // described counts for nothing here, so the registries and fixture tables a repository is
+    // mostly made of still cannot buy their way in.
+    let described: usize = parts.iter().map(|part| part.spoken).sum();
     for part in ranked.into_iter().take(MOST_CLAIMS) {
         let told = if part.weight == 0 {
             0.0
@@ -240,9 +264,36 @@ fn settle(mut corpus: Corpus, parts: &[Part]) -> Answer<Reading> {
         // statement, whatever share of the things inside it carry notes of their own. Trusting it
         // at that share instead makes the weakest part of a report drag every other part down
         // with it, and a repository is mostly data structures nobody writes notes about.
-        let trust = if part.describes_itself { 1.0 } else { told };
-        let evidence = Evidence::new(part.span, Confidence::new(trust), told);
-        if let Ok(claim) = Claim::new(part.feature, evidence) {
+        // A part whose author wrote a statement about the PART is attested by that statement. A
+        // part with no such statement is not: the best that can be said about it is one of the
+        // notes written about the things inside it, and the odds that an arbitrary interior note
+        // describes the whole are one in the number of notes there are. That is what it is
+        // trusted at, so a described part outranks an undescribed one by a measured amount rather
+        // than by a rule. Refusing undescribed parts outright was tried and was wrong: a
+        // repository whose author documented every function and no module is an ordinary
+        // repository, and it was written about in silence.
+        let trust = if part.describes_itself {
+            1.0
+        } else {
+            told / part.spoken.max(1) as f64
+        };
+        let share = if described == 0 {
+            0.0
+        } else {
+            part.spoken as f64 / described as f64
+        };
+        if share <= 0.0 {
+            continue;
+        }
+        let evidence = Evidence::new(part.span, Confidence::new(trust), share);
+        let claim = Claim::new(part.feature, evidence).map(|claim| {
+            if part.describes_itself {
+                claim.described_by(part.own)
+            } else {
+                claim
+            }
+        });
+        if let Ok(claim) = claim {
             claims.push(claim);
         }
     }
@@ -301,6 +352,8 @@ fn parted(lines: &[String]) -> Vec<String> {
 fn commented(source: &str) -> Vec<Item> {
     let mut items = Vec::new();
     let mut note: Vec<String> = Vec::new();
+    let mut opened = false;
+    let mut broke = false;
     for line in source.lines() {
         let trimmed = line.trim();
         if let Some(said) = uncomment(trimmed) {
@@ -308,7 +361,29 @@ fn commented(source: &str) -> Vec<Item> {
             continue;
         }
         if trimmed.is_empty() {
+            broke = !note.is_empty();
             continue;
+        }
+        // A note written at the top of a file, before anything is declared, is a note about the
+        // file. That is the same convention every language shares, and without reading it a file
+        // in a language with no `//!` has no description of itself at all.
+        if !opened {
+            opened = true;
+            // Only when the author left a line between the note and the first declaration. A note
+            // written HARD against a declaration is that declaration's note, whatever it happens
+            // to be about, and reading it as the file's own would attribute one function's
+            // description to everything in the file.
+            let doc = if broke { parted(&note) } else { Vec::new() };
+            if !doc.is_empty() {
+                note.clear();
+                items.push(Item {
+                    kind: Feature::of("file"),
+                    shapes: Vec::new(),
+                    name: String::new(),
+                    doc,
+                    documented: true,
+                });
+            }
         }
         let mut names = declared(trimmed);
         if names.is_empty() {
@@ -429,20 +504,27 @@ const READABLE: [&str; 14] = [
 ];
 
 /// The part a file belongs to, keyed by where it sits rather than by what it is called.
-fn part_of(path: &Path) -> Feature {
-    Feature::of(&module_of(path))
+fn part_of(path: &Path, describes_itself: bool) -> Feature {
+    Feature::of(&module_of(path, describes_itself))
+}
+
+/// A key for what a part says about itself, distinct from the key for everything it contains.
+fn describing(path: &Path, describes_itself: bool) -> Feature {
+    Feature::of(&(module_of(path, describes_itself) + "\u{0}"))
 }
 
 /// The module a file belongs to, which is the part of a tree an author describes.
 ///
-/// A file on its own is not a part anybody wrote a description of; a module is. Two files belong
-/// to the same module when the language says they do: `foo.rs` beside a `foo/` directory is the
-/// same module as everything inside it, and a file with no such directory belongs to the one that
-/// holds it. Reporting per file instead means naming thirteen files out of eight hundred, which
-/// describes a file system rather than a repository.
-fn module_of(path: &Path) -> String {
+/// A part is something somebody wrote a description of. A file carrying a description OF ITSELF is
+/// exactly that, so it stands alone; `foo.rs` beside a `foo/` directory is the same module as
+/// everything inside it; and a file that describes nothing belongs to the directory that holds
+/// it. Reporting per file regardless means naming thirteen files out of eight hundred, which
+/// describes a file system rather than a repository, while folding a described file into its
+/// directory merges fifty unrelated topics into one part whose describing sentence does not
+/// exist, so whatever is reported for it is a detail from inside one of the fifty.
+fn module_of(path: &Path, describes_itself: bool) -> String {
     let stripped = path.with_extension("");
-    if stripped.is_dir() {
+    if describes_itself || stripped.is_dir() {
         return stripped.to_string_lossy().into_owned();
     }
     path.parent().map_or_else(
