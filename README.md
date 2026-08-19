@@ -185,13 +185,27 @@ turn up in a sentence. Where a sentence ends is learned too, from which mark thi
 its words, is followed by a capital more often than chance would explain, and finishes a passage
 more often than chance would put it there.
 
-Which sentence to report is the measurement. A sentence earns its place by how much of the
-vocabulary that is characteristic of the part is in it, against the root of its length, so that
-neither the three most loaded words in the file nor its longest paragraph wins by default. A
-sentence written in more marks and lone characters than half this text's sentences use is not
+Which sentence to report is settled by where it was written, not by what is in it. An author opens
+a paragraph with the sentence that says what the paragraph is about and writes the detail
+underneath it, and writes what a whole thing is above what its pieces are, so the sentence a
+description wants is the earliest paragraph opener of the part nearest the top. Ranking by how
+characteristic a sentence's vocabulary is was tried first and is gone: a word is characteristic
+when it is rare elsewhere, so that measurement selects the most unusual sentence in a file, which
+is the opposite of an orienting one, and the documents it produced were made of interior detail.
+
+A sentence written in more marks and lone characters than half this text's sentences use is not
 prose at all but a table row, a line of mathematics or an entry in a bibliography, and is left
-where it was found. A part the input wrote no more than a single line about is a caption rather
-than a description, and is not reported as one.
+where it was found. The terminator is excluded from that count on both sides, because every
+sentence carries one and the shortest sentences, which are the summary lines, were being thrown
+out for it.
+
+The parts of a source tree are its modules rather than its files: a file beside a directory of the
+same name is the same module as what is in it, and a module's own file is read before the files
+under it. Reporting per file names a dozen files out of hundreds, which describes a file system.
+A part whose author wrote a statement about the part itself is trusted at that statement, whatever
+share of the things inside it carry notes of their own, since a repository is mostly data
+structures nobody writes notes about and the weakest part of a report otherwise drags the rest
+down with it.
 
 Where a sentence ends had one more thing to learn: a mark that a word is written with every single
 time that word appears is part of how the word is spelt, not the end of anything. Nothing here

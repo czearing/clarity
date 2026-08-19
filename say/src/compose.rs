@@ -119,15 +119,15 @@ pub fn compose(corpus: &Corpus, claims: &[Claim], most: usize) -> Answer<Said> {
         ));
     }
 
-    // A part the input wrote no more than a line about is a caption, an entry in a list or a
-    // heading, and the one sentence there is to take from it was never a description of anything.
     // A part the input never wrote a finished sentence about is a part there is nothing to report
-    // about, and both are dropped here rather than refused later. Refusing later would throw away the
+    // about, and it is dropped here rather than refused later. Requiring more than one sentence
+    // was tried and was wrong: the part of a tree an author describes in exactly one line is the
+    // one they wrote a summary line for, which is the sentence a description wants most. Refusing later would throw away the
     // whole document over one heading; reporting it anyway would mean writing the sentence, which
     // is the one thing this cannot do.
     let sayable: Vec<Claim> = claims
         .iter()
-        .filter(|claim| candidates(corpus, claim.feature).nth(1).is_some())
+        .filter(|claim| candidates(corpus, claim.feature).next().is_some())
         .copied()
         .collect();
     if sayable.is_empty() {
@@ -225,11 +225,31 @@ const WHOLE: usize = 40;
 /// search, priced against how long this text's sentences run.
 fn clause(corpus: &Corpus, claim: Claim) -> Answer<Clause> {
     let sentences = corpus.sentences_in(claim.feature, CONSIDERED);
-    let mut ranked: Vec<(f64, &Vec<Place>)> = candidates_of(corpus, &sentences)
-        .map(|sentence| (worth(corpus, claim.feature, sentence), sentence))
+    // Two structural facts about where a sentence was written, and no judgement about what it
+    // says. An author opens a paragraph with the sentence that says what the paragraph is about,
+    // and writes the sentence that says what the whole part is about before the ones that go into
+    // it: the summary line of a doc comment, the lead of an article, the opening of a chapter.
+    // What was tried before this and abandoned was ranking by how characteristic a sentence's
+    // words are, which selects the most unusual sentence in a part. That is the opposite of an
+    // orienting one, and it produced documents made of interior detail.
+    let opening: Vec<&Vec<Place>> = candidates_of(corpus, &sentences)
+        .filter(|sentence| {
+            sentence
+                .first()
+                .is_some_and(|place| corpus.opens_passage(*place))
+        })
         .collect();
-    ranked.sort_by(|a, b| b.0.total_cmp(&a.0));
-    for (_, sentence) in ranked.iter().take(TRIED) {
+    let mut considered: Vec<&Vec<Place>> = if opening.is_empty() {
+        candidates_of(corpus, &sentences).collect()
+    } else {
+        opening
+    };
+    considered.sort_by_key(|sentence| {
+        sentence
+            .first()
+            .map_or(usize::MAX, |place| place.position())
+    });
+    for sentence in considered.iter().take(TRIED) {
         if let Ok(said) = say(corpus, claim.feature, sentence) {
             return Ok(said);
         }
@@ -269,44 +289,20 @@ fn worth_reading(corpus: &Corpus, sentence: &[Place]) -> bool {
     if sentence.len() < SHORTEST || sentence.len() > WHOLE {
         return false;
     }
-    let marks = sentence
+    // Measured over everything but the terminator, on both sides of the comparison, because a
+    // sentence carrying its own full stop is not evidence of anything about the sentence.
+    let body = match sentence.split_last() {
+        Some((last, rest)) if corpus.is_symbolic(*last) => rest,
+        _ => sentence,
+    };
+    if body.is_empty() {
+        return false;
+    }
+    let marks = body
         .iter()
         .filter(|place| corpus.is_symbolic(**place))
         .count();
-    marks as f64 / sentence.len() as f64 <= corpus.marking_rate()
-}
-
-/// How much a sentence says about a property, against how much of the reader it costs.
-///
-/// A sentence full of the words this property is characteristic of is a sentence about it, and
-/// what is wanted is the one that says most. Divided by the root of its length rather than by its
-/// length: dividing outright hands the answer to whichever three words are most characteristic,
-/// and dividing by nothing hands it to the longest paragraph in the file. Between those, a
-/// sentence earns its length by carrying something in it.
-// A count of words in a text. A count large enough to lose a bit here is a text nobody has, and a
-// rate taken from one reads the same either way.
-#[allow(clippy::cast_precision_loss)]
-fn worth(corpus: &Corpus, feature: Feature, sentence: &[Place]) -> f64 {
-    let mut total = 0.0;
-    let mut counted = 0usize;
-    let mut said: Vec<crate::corpus::Word> = Vec::new();
-    for place in sentence {
-        if corpus.is_marking(place.word()) {
-            continue;
-        }
-        counted += 1;
-        // Once each. A sentence that repeats the one characteristic word it has is not more about
-        // the property than a sentence that uses it once and then says something.
-        if said.contains(&place.word()) {
-            continue;
-        }
-        said.push(place.word());
-        total += corpus.affinity(feature, place.word()).max(NEUTRAL).ln();
-    }
-    if counted == 0 {
-        return 0.0;
-    }
-    total / (counted as f64).sqrt()
+    marks as f64 / body.len() as f64 <= corpus.marking_rate()
 }
 
 /// Say one sentence of the input, as the input wrote it.

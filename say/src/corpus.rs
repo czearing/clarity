@@ -577,7 +577,12 @@ impl Corpus {
                 marks += 1;
             }
             if self.ends_sentence(index) {
-                shares.push(marks as f64 / length as f64);
+                // Not the terminator itself. Every sentence ends with one, so counting it makes a
+                // short sentence look more marked than a long one for a reason that has nothing to
+                // do with either, and the shortest sentences are the summary lines.
+                let ending = usize::from(is_symbolic(token));
+                let body = length.saturating_sub(ending).max(1);
+                shares.push(marks.saturating_sub(ending) as f64 / body as f64);
                 marks = 0;
                 length = 0;
             }
@@ -593,6 +598,19 @@ impl Corpus {
     #[must_use]
     pub fn is_symbolic(&self, place: Place) -> bool {
         is_symbolic(&self.stream[place.at])
+    }
+
+    /// Whether this place is where its author began a passage.
+    ///
+    /// The sentence an author opens a paragraph with is the sentence they wrote to say what the
+    /// paragraph is about, in every convention there is: the summary line of a doc comment, the
+    /// topic sentence of a paragraph, the lead of an article. That is a structural fact about
+    /// where the text was written, not a judgement about what it says.
+    #[must_use]
+    pub fn opens_passage(&self, place: Place) -> bool {
+        self.passages
+            .binary_search_by_key(&place.at, |(start, _, _)| *start)
+            .is_ok()
     }
 
     /// Whether the input ever wrote one word directly after the other.

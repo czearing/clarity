@@ -134,6 +134,22 @@ pub fn findings(source: &str) -> Vec<Piece> {
         return Vec::new();
     };
     let mut found = Vec::new();
+    // The doc a file carries about itself, before any item in it. This is where an author writes
+    // what the file is for, and reading only the items in a file throws away the one paragraph
+    // written to describe the whole of it.
+    let about = doc_of(&file.attrs);
+    if !about.is_empty() {
+        found.push(Piece {
+            name: String::new(),
+            kind: "file",
+            public: true,
+            line: 0,
+            indent: 0,
+            documented: true,
+            doc: about,
+            facts: Vec::new(),
+        });
+    }
     for item in &file.items {
         walk(item, source, &mut found);
     }

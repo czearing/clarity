@@ -52,6 +52,10 @@ struct Part {
     weight: usize,
     /// How many of those things the input says something about, which is how far it is trusted.
     spoken: usize,
+    /// How far down the tree it sits, because a description is written at the top of one.
+    depth: usize,
+    /// Whether the part carries a statement its author wrote about the part itself.
+    describes_itself: bool,
 }
 
 /// Read a tree of source files: its parts are its files, and its words are its authors'.
@@ -72,7 +76,23 @@ pub fn read_tree(root: &Path) -> Answer<Reading> {
     if files.is_empty() {
         return Err(Refusal::unreported("no source was found to read"));
     }
-    files.sort();
+    // A module's own file before the files under it. `lib.rs`, `main.rs` and `mod.rs` are where an
+    // author states what the whole module is, and the files beside them state what its pieces are,
+    // so reading them in this order puts the description of a thing before the description of its
+    // parts. Plain alphabetical order buries the crate root among its siblings.
+    files.sort_by(|left, right| {
+        let key = |path: &std::path::PathBuf| {
+            let parent = path.parent().map(Path::to_path_buf).unwrap_or_default();
+            let stem = path
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .unwrap_or_default()
+                .to_owned();
+            let own = usize::from(!matches!(stem.as_str(), "lib" | "main" | "mod" | "index"));
+            (parent, own, stem)
+        };
+        key(left).cmp(&key(right))
+    });
     for path in files {
         let Ok(source) = fs::read_to_string(&path) else {
             continue;
@@ -98,6 +118,9 @@ pub fn read_tree(root: &Path) -> Answer<Reading> {
             commented(&source)
         };
         let mut spoken = 0usize;
+        let describes_itself = items
+            .first()
+            .is_some_and(|item| item.kind == Feature::of("file") && item.documented);
         for item in &items {
             let mut features = vec![feature, item.kind];
             features.extend(item.shapes.iter().copied());
@@ -120,12 +143,21 @@ pub fn read_tree(root: &Path) -> Answer<Reading> {
         if pieces.is_empty() {
             continue;
         }
-        parts.push(Part {
-            feature,
-            span: Span::new(start, at.max(start + 1)),
-            weight: pieces.len(),
-            spoken,
-        });
+        if let Some(part) = parts.iter_mut().find(|part| part.feature == feature) {
+            part.span = Span::new(part.span.start, at.max(part.span.start + 1));
+            part.weight += pieces.len();
+            part.spoken += spoken;
+            part.describes_itself |= describes_itself;
+        } else {
+            parts.push(Part {
+                feature,
+                span: Span::new(start, at.max(start + 1)),
+                weight: pieces.len(),
+                spoken,
+                describes_itself,
+                depth: module_of(&path).matches(std::path::MAIN_SEPARATOR).count(),
+            });
+        }
     }
     settle(corpus, &parts)
 }
@@ -154,6 +186,8 @@ pub fn read_prose(text: &str) -> Answer<Reading> {
             span,
             weight,
             spoken: weight,
+            depth: 0,
+            describes_itself: true,
         });
     }
     settle(corpus, &parts)
@@ -161,9 +195,9 @@ pub fn read_prose(text: &str) -> Answer<Reading> {
 
 /// Price the parts by what was found in them and hand back a reading.
 ///
-/// Two measurements, both taken from the input. How much a part holds is what makes it worth
-/// mentioning; how much of it the input actually describes is how far a claim about it is
-/// trusted. A part nobody wrote a word about is carried at the trust that deserves.
+/// One measurement, taken from the input: how much of a part its author actually described. That
+/// is both what makes it worth mentioning and how far a claim about it is trusted, and a part
+/// nobody wrote a word about is carried at the trust that deserves.
 // A count of things in an input. A count large enough to lose a bit here is an input nobody has,
 // and a share taken from one reads the same either way.
 #[allow(clippy::cast_precision_loss)]
@@ -175,21 +209,22 @@ fn settle(mut corpus: Corpus, parts: &[Part]) -> Answer<Reading> {
     if corpus.terminator().is_none() {
         return Err(Refusal::unreported("the input never finishes a sentence"));
     }
-    let largest = parts
-        .iter()
-        .map(|part| part.weight)
-        .max()
-        .unwrap_or(1)
-        .max(1) as f64;
     let mut claims = Vec::new();
     let mut ranked: Vec<&Part> = parts.iter().collect();
+    // By how much of a part its author described, not by how much the part holds. Ranking by size
+    // fills the list with the registries and fixture tables a repository is mostly made of, which
+    // are the parts nobody wrote a description of, and crowds out the parts somebody did.
+    // Nearest the top of the tree first, then by how much of a part its author described. An
+    // author writes what a thing is where the thing begins and writes the detail underneath, so a
+    // description of a whole is found above a description of its parts. Ranking by size instead
+    // fills the list with the registries and fixture tables a repository is mostly made of.
     ranked.sort_by(|a, b| {
-        b.weight
-            .cmp(&a.weight)
+        a.depth
+            .cmp(&b.depth)
+            .then(b.spoken.cmp(&a.spoken))
             .then(a.span.start.cmp(&b.span.start))
     });
     for part in ranked.into_iter().take(MOST_CLAIMS) {
-        let share = part.weight as f64 / largest;
         let told = if part.weight == 0 {
             0.0
         } else {
@@ -198,7 +233,15 @@ fn settle(mut corpus: Corpus, parts: &[Part]) -> Answer<Reading> {
         if told <= 0.0 {
             continue;
         }
-        let evidence = Evidence::new(part.span, Confidence::new(told), share);
+        // What a part is worth stating is how much of it its author described, not how large it
+        // is. Weighing it against the largest part in the input means a document reports the four
+        // biggest files and says nothing about the rest, which is a report about the file system.
+        // A part whose author wrote a statement about the part itself is attested by that
+        // statement, whatever share of the things inside it carry notes of their own. Trusting it
+        // at that share instead makes the weakest part of a report drag every other part down
+        // with it, and a repository is mostly data structures nobody writes notes about.
+        let trust = if part.describes_itself { 1.0 } else { told };
+        let evidence = Evidence::new(part.span, Confidence::new(trust), told);
         if let Ok(claim) = Claim::new(part.feature, evidence) {
             claims.push(claim);
         }
@@ -387,7 +430,25 @@ const READABLE: [&str; 14] = [
 
 /// The part a file belongs to, keyed by where it sits rather than by what it is called.
 fn part_of(path: &Path) -> Feature {
-    Feature::of(&path.to_string_lossy())
+    Feature::of(&module_of(path))
+}
+
+/// The module a file belongs to, which is the part of a tree an author describes.
+///
+/// A file on its own is not a part anybody wrote a description of; a module is. Two files belong
+/// to the same module when the language says they do: `foo.rs` beside a `foo/` directory is the
+/// same module as everything inside it, and a file with no such directory belongs to the one that
+/// holds it. Reporting per file instead means naming thirteen files out of eight hundred, which
+/// describes a file system rather than a repository.
+fn module_of(path: &Path) -> String {
+    let stripped = path.with_extension("");
+    if stripped.is_dir() {
+        return stripped.to_string_lossy().into_owned();
+    }
+    path.parent().map_or_else(
+        || path.to_string_lossy().into_owned(),
+        |parent| parent.to_string_lossy().into_owned(),
+    )
 }
 
 /// A key for one shape the code was found to have.
