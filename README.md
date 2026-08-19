@@ -118,7 +118,7 @@ there is counted, held to that count in both directions, and set out in `docs/LI
 | Faulty sentences repaired to clean | 20 of 20, never more than two swaps |
 | Wasteful sentences named | 12 of 12 |
 | Passages whose conventions were recovered | 5 of 5, and the planted fault caught in each |
-| Faults left in seven hundred units of the crate's own prose | 89, bounded in both directions |
+| Faults left in seven hundred units of the crate's own prose | 90, bounded in both directions |
 
 Every example above is compiled and run as a doctest. Timings are what `cargo bench` reports for
 `benches/read.rs`; on the machine that wrote this, checking a short sentence takes about two
@@ -193,6 +193,22 @@ characteristic a sentence's vocabulary is was tried first and is gone: a word is
 when it is rare elsewhere, so that measurement selects the most unusual sentence in a file, which
 is the opposite of an orienting one, and the documents it produced were made of interior detail.
 
+A description is a document rather than a list of lines, and where one passage ends is measured
+rather than decided. The words each part is characteristic of are compared between neighbours in
+the order they will be read, and a break falls at a valley: a join weaker than the one before it
+and no stronger than the one after. No cutoff is used because no cutoff works. Any level low
+enough to part an encyclopedia entry into paragraphs gives a set of modules one line each, and any
+level high enough to hold those modules together welds the entry into one wall of text. A valley
+is a fact about the shape of an input's own cohesion, so the same rule reports a repository in
+three passages, a novel in thirteen and an encyclopedia entry in sixteen. The test that guards
+this fails against a list: it requires that some passage hold more than one sentence, and that not
+everything land in one.
+
+A sentence that uses none of the words its part is characteristic of describes something the part
+happens to contain rather than the part. "No information." was written about a variant inside a
+module about confidence and says nothing about confidence; the same affinity the selection already
+runs on removes it, so no list of weak sentences exists here and none could.
+
 A sentence written in more marks and lone characters than half this text's sentences use is not
 prose at all but a table row, a line of mathematics or an entry in a bibliography, and is left
 where it was found. The terminator is excluded from that count on both sides, because every
@@ -218,7 +234,7 @@ The whole of fitkit, seven crates and ten thousand words of doc comments, is rea
 in 0.12 seconds. A TypeScript application takes 0.04, an encyclopedia entry 0.02, and a novel of
 seven hundred thousand characters 0.15.
 
-Across all four, every line the engine wrote appears verbatim in the input it was given, and no two
+Across all four, every sentence the engine wrote appears verbatim in the input it was given, and no two
 words appear next to each other that the input did not write next to each other. That is checked
 mechanically rather than claimed, on a repository, an application in a language the engine was
 never taught, an encyclopedia article and a novel.

@@ -135,12 +135,44 @@ impl Clause {
 #[derive(Debug)]
 pub struct Said {
     chosen: Chosen<Vec<Answer<Clause>>>,
+    /// Where the run of clauses breaks, measured from the input rather than decided here.
+    breaks: Vec<usize>,
 }
 
 impl Said {
     /// Only reachable from a completed search.
-    pub(crate) const fn from_search(chosen: Chosen<Vec<Answer<Clause>>>) -> Self {
-        Self { chosen }
+    pub(crate) const fn from_search(
+        chosen: Chosen<Vec<Answer<Clause>>>,
+        breaks: Vec<usize>,
+    ) -> Self {
+        Self { chosen, breaks }
+    }
+
+    /// The clauses, gathered into the passages the input's own vocabulary puts them in.
+    ///
+    /// A document is not a list. Two parts an author discusses in the same words belong in one
+    /// passage and two they never discuss together do not, and that is a measurement of the input
+    /// taken before anything is printed. Nothing here decides where a paragraph should fall; it
+    /// reports where the shared vocabulary between one part and the next drops below what this
+    /// input holds between neighbours generally.
+    ///
+    /// # Errors
+    ///
+    /// Refuses where any clause could not be composed from the corpus.
+    pub fn passages(&self) -> Answer<Vec<Vec<&Clause>>> {
+        let clauses = self.clauses()?;
+        let mut passages = Vec::new();
+        let mut passage: Vec<&Clause> = Vec::new();
+        for (position, clause) in clauses.into_iter().enumerate() {
+            if position > 0 && self.breaks.contains(&position) && !passage.is_empty() {
+                passages.push(core::mem::take(&mut passage));
+            }
+            passage.push(clause);
+        }
+        if !passage.is_empty() {
+            passages.push(passage);
+        }
+        Ok(passages)
     }
 
     /// The clauses, or the first refusal that stopped one being written.

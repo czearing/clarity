@@ -9,7 +9,7 @@ use std::process::ExitCode;
 use std::{env, fs};
 
 use clarity::read::{read_prose, read_tree, Reading};
-use clarity_say::{compose, Said, MOST_CLAIMS};
+use clarity_say::{compose, Clause, Said, MOST_CLAIMS};
 use fitkit::Answer;
 
 fn main() -> ExitCode {
@@ -54,16 +54,21 @@ fn write(reading: &Reading) -> Answer<Said> {
 
 /// Print what was said, and what stands behind it.
 fn report(reading: &Reading, said: &Said) {
-    let clauses = match said.clauses() {
-        Ok(clauses) => clauses,
+    let passages = match said.passages() {
+        Ok(passages) => passages,
         Err(refusal) => {
             eprintln!("nothing written: {refusal}");
             return;
         }
     };
-    for clause in &clauses {
-        println!("{}", clause.text());
+    for (position, passage) in passages.iter().enumerate() {
+        if position > 0 {
+            println!();
+        }
+        let written: Vec<String> = passage.iter().map(|clause| clause.text()).collect();
+        println!("{}", written.join(" "));
     }
+    let clauses: Vec<&Clause> = passages.into_iter().flatten().collect();
     let trace = said.trace();
     eprintln!();
     eprintln!(

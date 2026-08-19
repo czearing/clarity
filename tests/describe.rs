@@ -360,3 +360,41 @@ fn squashed(text: &str) -> String {
 fn tight(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().concat()
 }
+
+#[test]
+fn what_comes_out_is_a_document_of_passages_and_not_a_list_of_lines() {
+    let text = ledger();
+    let reading = read_prose(&text).expect("prose the engine can read");
+    let said = compose(reading.corpus(), reading.claims(), MOST_CLAIMS).expect("something to say");
+    let passages = said.passages().expect("every clause was composed");
+    let clauses: usize = passages.iter().map(Vec::len).sum();
+    assert!(clauses > 2, "too little was said to prove anything");
+    // The point of the test: a bare list of lines is one clause per passage throughout, so this
+    // fails against one. What is asserted is not a shape chosen here but that the engine found
+    // some part of the input whose claims belong together, which a list never does.
+    assert!(
+        passages.iter().any(|passage| passage.len() > 1),
+        "every passage holds one clause, so this is a list and not a document"
+    );
+    // And it is a document rather than one wall of text: an input that says several unrelated
+    // things is parted somewhere.
+    assert!(
+        passages.len() > 1,
+        "everything landed in one passage, so nothing was parted"
+    );
+    for passage in &passages {
+        for clause in passage {
+            let text = clause.text();
+            let opening = text.chars().next().expect("a clause that says something");
+            assert!(
+                opening.is_uppercase() || opening.is_ascii_punctuation() || opening.is_numeric(),
+                "a passage begins mid-sentence: {text:?}"
+            );
+            let closing = text.chars().last().expect("a clause that says something");
+            assert!(
+                matches!(closing, '.' | '!' | '?' | '"' | ')' | '`'),
+                "a clause stops without finishing: {text:?}"
+            );
+        }
+    }
+}

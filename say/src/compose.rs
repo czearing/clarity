@@ -137,9 +137,40 @@ pub fn compose(corpus: &Corpus, claims: &[Claim], most: usize) -> Answer<Said> {
     }
 
     let terms = declare(corpus, &sayable, most)?;
-    let chosen =
-        optimise_subset_parts(&terms, AFFORDABLE, 64, |item| clause(corpus, sayable[item]))?;
-    Ok(Said::from_search(chosen))
+    // The order the search states its choices in, recorded as it builds them, because where one
+    // passage ends and the next begins is a question about that order and nothing else can see it.
+    let stated: core::cell::RefCell<Vec<Feature>> = core::cell::RefCell::new(Vec::new());
+    let chosen = optimise_subset_parts(&terms, AFFORDABLE, 64, |item| {
+        stated.borrow_mut().push(sayable[item].feature);
+        clause(corpus, sayable[item])
+    })?;
+    let breaks = parted(corpus, &stated.into_inner());
+    Ok(Said::from_search(chosen, breaks))
+}
+
+/// Where the run of stated parts breaks into passages.
+///
+/// Two parts an author discusses in the same words belong together and two they never discuss
+/// together do not, which is the measurement the selection already rests on, asked here of
+/// neighbours in the order they will be read. The break falls at a valley: a join weaker than the
+/// one before it and no stronger than the one after. That is a fact about the shape of this
+/// input's own cohesion, so there is no cutoff to pick and none was picked. A fixed cutoff cannot
+/// work: any level low enough to part an encyclopedia into paragraphs parts a set of modules into
+/// a line apiece, and any level high enough to hold the modules together welds the encyclopedia
+/// into one wall of text.
+fn parted(corpus: &Corpus, stated: &[Feature]) -> Vec<usize> {
+    let links: Vec<f64> = stated
+        .windows(2)
+        .map(|pair| shared_vocabulary(corpus, pair[0], pair[1]))
+        .collect();
+    (0..links.len())
+        .filter(|&join| {
+            let before = if join == 0 { f64::MAX } else { links[join - 1] };
+            let after = links.get(join + 1).copied().unwrap_or(f64::MAX);
+            links[join] < before && links[join] <= after
+        })
+        .map(|join| join + 1)
+        .collect()
 }
 
 /// State what each claim is worth and how any two of them sit together.
@@ -232,7 +263,12 @@ fn clause(corpus: &Corpus, claim: Claim) -> Answer<Clause> {
     // What was tried before this and abandoned was ranking by how characteristic a sentence's
     // words are, which selects the most unusual sentence in a part. That is the opposite of an
     // orienting one, and it produced documents made of interior detail.
-    let opening: Vec<&Vec<Place>> = candidates_of(corpus, &sentences)
+    let about: Vec<&Vec<Place>> = candidates_of(corpus, &sentences)
+        .filter(|sentence| about_it(corpus, claim.feature, sentence))
+        .collect();
+    let opening: Vec<&Vec<Place>> = about
+        .iter()
+        .copied()
         .filter(|sentence| {
             sentence
                 .first()
@@ -240,7 +276,11 @@ fn clause(corpus: &Corpus, claim: Claim) -> Answer<Clause> {
         })
         .collect();
     let mut considered: Vec<&Vec<Place>> = if opening.is_empty() {
-        candidates_of(corpus, &sentences).collect()
+        if about.is_empty() {
+            candidates_of(corpus, &sentences).collect()
+        } else {
+            about
+        }
     } else {
         opening
     };
@@ -257,6 +297,22 @@ fn clause(corpus: &Corpus, claim: Claim) -> Answer<Clause> {
     Err(Refusal::unreported(
         "the input says nothing about this in a sentence it finished",
     ))
+}
+
+/// Whether a sentence is about the part it was found in, rather than merely inside it.
+///
+/// A sentence that uses none of the words this part is characteristic of describes something the
+/// part happens to contain, not the part: "No information." was written in a module about
+/// confidence, and says nothing about confidence. The test is the same affinity the selection
+/// already runs on, so no list of weak sentences exists anywhere here and none could.
+fn about_it(corpus: &Corpus, feature: Feature, sentence: &[Place]) -> bool {
+    let characteristic = corpus.characteristic(feature, CHARACTERISTIC);
+    if characteristic.is_empty() {
+        return true;
+    }
+    sentence
+        .iter()
+        .any(|place| characteristic.contains(&place.word()))
 }
 
 /// The sentences about a property that are long enough to say something and short enough to read.
