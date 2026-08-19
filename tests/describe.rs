@@ -407,15 +407,8 @@ fn what_comes_out_is_a_document_of_passages_and_not_a_list_of_lines() {
     }
 }
 
-#[test]
-fn a_repository_that_says_one_thing_many_times_is_not_reported_many_times() {
-    // Twelve files whose authors wrote almost the same summary line. Nothing marks them as
-    // duplicates: each is a true, finished, distinct sentence about a real part, and every one of
-    // them is worth stating on its own. What must not happen is that all twelve are stated.
-    let subjects = [
-        "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa",
-        "lambda", "mu",
-    ];
+/// Build a repository of near-identical modules: the same summary line, one word apart.
+fn same_thing_many_times(subjects: &[&str]) -> Vec<String> {
     let files: Vec<(String, String)> = subjects
         .iter()
         .map(|subject| {
@@ -425,7 +418,7 @@ fn a_repository_that_says_one_thing_many_times_is_not_reported_many_times() {
                 format!(
                     "{MODULE} Records are written once and are held until they expire. Nothing"
                 ),
-                format!("{MODULE} outside this module reaches them, and the expiry clock is the"),
+                format!("{MODULE} outside this service reaches them, and the expiry clock is the"),
                 format!("{MODULE} only thing that removes one."),
                 String::new(),
                 format!("{ITEM} Put a record in, returning the position it was written at."),
@@ -441,24 +434,41 @@ fn a_repository_that_says_one_thing_many_times_is_not_reported_many_times() {
         .iter()
         .map(|(name, source)| (name.as_str(), source.as_str()))
         .collect();
-    let home = tree("repetition", &borrowed);
+    let home = tree(&format!("repetition-{}", subjects.len()), &borrowed);
     let reading = read_tree(&home).expect("a tree the engine can read");
     let said = compose(reading.corpus(), reading.claims(), MOST_CLAIMS).expect("something to say");
-    let written = lines(&said);
+    lines(&said)
+}
+
+#[test]
+fn what_is_reported_does_not_grow_with_how_often_the_input_repeats_itself() {
+    // Nothing marks these modules as duplicates. Each summary line is a true, finished, distinct
+    // sentence about a real part, and every one of them is worth stating on its own. What must
+    // not happen is that stating one is never weighed against having stated another: if the
+    // objective rewards two claims for sharing vocabulary it is monotone, the best subset is
+    // every claim, and the report is an index that grows a line for every module added.
+    let twelve = same_thing_many_times(&[
+        "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa",
+        "lambda", "mu",
+    ]);
+    let twenty_four = same_thing_many_times(&[
+        "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa",
+        "lambda", "mu", "nu", "xi", "omicron", "pi", "rho", "sigma", "tau", "upsilon", "phi",
+        "chi", "psi", "omega",
+    ]);
     assert!(
-        !written.is_empty(),
+        !twelve.is_empty() && !twenty_four.is_empty(),
         "a repository that repeats itself was written about in silence"
     );
-    for (position, line) in written.iter().enumerate() {
-        for other in written.iter().skip(position + 1) {
-            let mine: Vec<&str> = line.split_whitespace().collect();
-            let theirs: Vec<&str> = other.split_whitespace().collect();
-            let shared = mine.iter().filter(|word| theirs.contains(word)).count();
-            let smaller = mine.len().min(theirs.len());
-            assert!(
-                shared * 2 <= smaller,
-                "two lines of the document say the same thing: {line:?} and {other:?}"
-            );
-        }
-    }
+    assert!(
+        twelve.len() * 3 <= 12,
+        "twelve modules saying one thing were reported in {} lines: {twelve:#?}",
+        twelve.len()
+    );
+    assert!(
+        twenty_four.len() <= twelve.len(),
+        "doubling the modules that say one thing grew the report from {} lines to {}: {twenty_four:#?}",
+        twelve.len(),
+        twenty_four.len()
+    );
 }

@@ -796,3 +796,31 @@ For a language with no module-note mark of its own, the note a file opens with â
 is declared, and separated from the first declaration by a blank line â€” is read as the file's
 note. The blank line is load-bearing. A note written hard against a declaration is that
 declaration's note, whatever it happens to be about.
+
+## A part is described by the first paragraph of its note and no other
+
+Keeping a part's own note apart from the notes about its contents removed every interior detail
+from the report and left a second fault behind it. A module note runs to several paragraphs, and
+the paragraphs after the first are not descriptions of the module: they argue, qualify and
+complain, and they presuppose the paragraph above them. The report carried `Worse, the
+specification's premise is falsified by the published sorption data it would need.` as the
+description of a module -- a true sentence its author wrote about that module, five paragraphs
+below the line saying what the module is. It carried `USDA assays amino acids for about two thirds
+of rows` and `The earlier solver was given an ingredient and asked only how much water to add.`
+for the same reason.
+
+An author writes what a thing is before writing anything else about it. The first paragraph of a
+note is therefore the only paragraph keyed as the part's own; the rest stays keyed to the part and
+remains available to nothing that asks what the part IS. This is a fact about how notes are
+written and not a judgement about what the sentences say, and it took the book-cook-ai report from
+thirty-six lines to twenty-four, all twenty-four of them a module's own summary line.
+
+## A word that is only ever written with a full stop
+
+The fixture for the repetition test was written as twelve modules whose summary line ended `for
+the alpha service.`, and the engine refused to find a finished sentence anywhere in it. The word
+`service` appeared twelve times and carried a dot on all twelve, so the run was long enough not to
+be accidental and the dot was read as part of how the word is spelt -- the same rule that keeps a
+title written before a name from ending a sentence. The rule is right and the fixture was wrong,
+but it is worth recording that a vocabulary small enough for every occurrence of a word to be
+sentence-final is a vocabulary this cannot read.

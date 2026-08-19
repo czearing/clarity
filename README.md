@@ -118,7 +118,7 @@ there is counted, held to that count in both directions, and set out in `docs/LI
 | Faulty sentences repaired to clean | 20 of 20, never more than two swaps |
 | Wasteful sentences named | 12 of 12 |
 | Passages whose conventions were recovered | 5 of 5, and the planted fault caught in each |
-| Faults left in seven hundred units of the crate's own prose | 93, bounded in both directions |
+| Faults left in seven hundred units of the crate's own prose | 95, bounded in both directions |
 
 Every example above is compiled and run as a doctest. Timings are what `cargo bench` reports for
 `benches/read.rs`; on the machine that wrote this, checking a short sentence takes about two
@@ -224,9 +224,11 @@ out for it.
 The parts of a source tree are its modules rather than its files: a file beside a directory of the
 same name is the same module as what is in it, and a module's own file is read before the files
 under it. Reporting per file names a dozen files out of hundreds, which describes a file system.
-A file whose author wrote a note about the FILE is a part in its own right, and that note is kept
-under a key of its own, so what a part says about itself can be asked for without also getting
-every note written about the things inside it. Without that, every file sitting directly in a
+A file whose author wrote a note about the FILE is a part in its own right, and the FIRST
+paragraph of that note is kept under a key of its own, so what a part says about itself can be
+asked for without also getting every note written about the things inside it, or the paragraphs
+of its own note that argue and qualify rather than describe. An author writes what a thing is
+before writing anything else about it, and what follows presupposes it. Without that, every file sitting directly in a
 source directory folded into one part holding fifty unrelated topics, and the best sentence such
 a part had was an interior detail: a true note about one function that says nothing about the
 module holding it. A part whose author wrote a statement about the part itself is trusted at that

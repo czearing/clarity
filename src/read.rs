@@ -130,13 +130,19 @@ pub fn read_tree(root: &Path) -> Answer<Reading> {
         let own = describing(&path, describes_itself);
         for item in &items {
             let mut features = vec![feature, item.kind];
+            features.extend(item.shapes.iter().copied());
             // The part's description of itself is kept under a key of its own, so that what a
             // part says about itself can be asked for without also getting every note written
-            // about the things inside it.
+            // about the things inside it. It is the FIRST paragraph of the note and no other:
+            // an author writes what a thing is before writing anything else about it, and what
+            // follows presupposes it. Taking the whole note reported "Worse, the specification's
+            // premise is falsified by the published sorption data it would need." as the
+            // description of a module -- a true sentence its author wrote about that module,
+            // five paragraphs below the line saying what the module is.
+            let mut summary = features.clone();
             if item.kind == Feature::of("file") {
-                features.push(own);
+                summary.push(own);
             }
-            features.extend(item.shapes.iter().copied());
             // The name its author chose is evidence about the item, in words a reader already
             // associates with it.
             corpus.attach(&features, &item.name, Span::new(at, at + item.name.len()));
@@ -145,8 +151,9 @@ pub fn read_tree(root: &Path) -> Answer<Reading> {
                 // A paragraph at a time, because a break between paragraphs is a break the author
                 // put there. Run them together and a heading joins the sentence beneath it, and
                 // the engine reports a line no author wrote as though one had.
-                for paragraph in &item.doc {
-                    corpus.attach(&features, paragraph, Span::new(at, at + paragraph.len()));
+                for (position, paragraph) in item.doc.iter().enumerate() {
+                    let keys = if position == 0 { &summary } else { &features };
+                    corpus.attach(keys, paragraph, Span::new(at, at + paragraph.len()));
                     at += paragraph.len();
                 }
                 spoken += 1;
