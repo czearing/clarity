@@ -192,6 +192,39 @@ fn reach(first: Span, second: Span) -> Span {
     Span::new(first.start.min(second.start), first.end.max(second.end))
 }
 
+/// What it costs to have stopped at each step, taken from how long this text's sentences run.
+///
+/// Without this, stopping is free and continuing is not: every further word is another
+/// probability below one, so the cheapest reading of any text is the shortest one it can get away
+/// with, and the engine writes four words and a full stop. The costs here are laid out so that
+/// whatever step a clause stops at, the silences that follow it sum to what it costs to be a
+/// sentence of that length in this text. Length is then a decision the search makes against
+/// evidence rather than something that falls out of the arithmetic.
+// A count of the sentences in a text. A count large enough to lose a bit here is a text nobody
+// has, and a share taken from one reads the same either way.
+#[allow(clippy::cast_precision_loss)]
+fn stopping(lengths: &[usize], steps: usize) -> Vec<f64> {
+    let mut counted = vec![0.0; steps + 1];
+    for &length in lengths {
+        if let Some(slot) = counted.get_mut(length.min(steps)) {
+            *slot += 1.0;
+        }
+    }
+    // A length this text never used is not a length it cannot use, and a search that meets an
+    // impossibility where it should meet a cost has nowhere to go.
+    let total: f64 = counted.iter().sum::<f64>() + counted.len() as f64;
+    let share: Vec<f64> = counted.iter().map(|count| (count + 1.0) / total).collect();
+    let mut costs = vec![0.0; steps];
+    for step in (0..steps).rev() {
+        costs[step] = if step + 1 == steps {
+            -share[step].ln()
+        } else {
+            (share[step + 1] / share[step]).ln()
+        };
+    }
+    costs
+}
+
 /// Compose one clause about one claim, by decoding a path through the input's own text.
 ///
 /// The states are places in the input where a word bearing on the claim was read, and one
@@ -238,12 +271,17 @@ fn clause(corpus: &Corpus, claim: Claim) -> Answer<Clause> {
         .map(|place| corpus.closes(place.word()))
         .collect();
 
+    let stopping = stopping(&lengths, steps);
     let emission = |step: usize, state: usize| -> f64 {
         if state == silence {
             // A clause that says nothing at all is not a shorter clause, it is the absence of
             // one. Silence has to be reached from a finished sentence, never chosen instead of
             // starting one.
-            return if step == 0 { IMPOSSIBLE } else { 0.0 };
+            return if step == 0 {
+                IMPOSSIBLE
+            } else {
+                stopping[step]
+            };
         }
         // The last position a clause has must finish it. Everything else is unreachable there, so
         // a clause cannot simply run out of room mid-sentence: it either reaches the mark this
@@ -284,8 +322,15 @@ fn clause(corpus: &Corpus, claim: Claim) -> Answer<Clause> {
                     return IMPOSSIBLE;
                 }
                 // How much likelier this word is after that one than it is anywhere. A pair the
-                // text actually uses is worth taking; a pair it never uses is not, and neither
+                // text writes is worth taking and a pair it never writes is not, and neither
                 // judgement needed a number chosen here.
+                //
+                // It is the ratio rather than the probability, and that is what makes length a
+                // decision. Charging the probability outright charges every word its own
+                // surprise, so each further word costs something no matter how well it fits, and
+                // the cheapest reading of any text is the shortest one it can end. Against the
+                // ratio a well placed word is free, and how long a clause runs is left to the one
+                // thing that measured it: how long this text's own sentences run.
                 let after = corpus.follows(places[from].word(), places[to].word());
                 let anywhere = corpus.commonness(places[to].word()).max(f64::MIN_POSITIVE);
                 -(after / anywhere).ln()

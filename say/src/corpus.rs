@@ -147,6 +147,8 @@ pub struct Corpus {
     passages: Vec<(usize, usize, Vec<Feature>)>,
     /// Learned: how often word b directly followed word a.
     follows: BTreeMap<(usize, usize), u32>,
+    /// How many different words have been seen after each word.
+    varied: Vec<u32>,
     /// Learned: how often a word was seen in text attached to a feature.
     marks: BTreeMap<(Feature, usize), u32>,
     /// Learned: how many tokens were seen attached to each feature.
@@ -294,10 +296,16 @@ impl Corpus {
     // has, and a rate taken from one reads the same either way.
     #[allow(clippy::cast_precision_loss)]
     pub fn follows(&self, before: Word, after: Word) -> f64 {
-        let total = self.vocabulary[before.0].seen;
-        let joint = self.follows.get(&(before.0, after.0)).copied().unwrap_or(0);
-        let vocabulary = self.vocabulary.len().max(1) as f64;
-        (f64::from(joint) + UNSEEN) / (f64::from(total) + UNSEEN * vocabulary)
+        let total = f64::from(self.vocabulary[before.0].seen);
+        let joint = f64::from(self.follows.get(&(before.0, after.0)).copied().unwrap_or(0));
+        // How much weight to give a pair never seen is decided by how varied this word's company
+        // has been. A word that has been followed by fifty different words is a word whose next
+        // word is not settled, so an unseen successor is unremarkable; a word that has only ever
+        // been followed by one is a word whose company is fixed, and departing from it is news.
+        // The count of distinct successors is that measurement, and it is the text's, not a
+        // number chosen here.
+        let varied = f64::from(self.varied[before.0]);
+        (joint + varied * self.commonness(after)) / (total + varied)
     }
 
     /// How likely this word is to open a sentence.
@@ -658,6 +666,11 @@ impl Corpus {
                 previous = Some(token.word);
             }
         }
+        let mut varied: Vec<u32> = vec![0; self.vocabulary.len()];
+        for (before, _) in counts.keys() {
+            varied[*before] += 1;
+        }
+        self.varied = varied;
         if let Some(last) = previous {
             closed[last] += 1;
         }
@@ -691,13 +704,6 @@ impl Corpus {
 
 /// How much of a count to assume for something never seen.
 const SMOOTHING: f64 = 0.5;
-
-/// How much of a count to assume for a pair of words never seen together.
-///
-/// Small on purpose. A pair the text never used has to be genuinely expensive, or the model will
-/// happily put any word after any other and call the result a sentence. It is not zero, because a
-/// generator that refused every unseen pair could only ever repeat sentences it had already read.
-const UNSEEN: f64 = 0.004;
 
 /// Split text into words and marks, reporting the gap that preceded each.
 ///
