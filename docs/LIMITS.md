@@ -409,7 +409,14 @@ seconds for the same work, because a source file is mostly code.
 
 ## Writing doc comments from the code
 
-The `document` pass reads a Rust file with `syn`, gathers what the code proves about each public
+This pass no longer exists. What is recorded below was measured while it did, and it is kept
+because the limits it ran into are the reason the engine that replaced it is built the way it is.
+It wrote a doc comment by choosing among sentence shapes held in its own source, so what it could
+say was bounded by what somebody had thought to write down there. `describe` holds no shapes at
+all: it is given a corpus and a set of claims, and every word it writes is one the input used.
+The section after this one records what that cost and what it bought.
+
+The `document` pass read a Rust file with `syn`, gathers what the code proves about each public
 item, and writes a doc comment for the few items whose code proves something the declaration does
 not already show. It never reads the code's meaning.
 It reads the signature and the shape of the body. Every finding carries a price that says how sure
@@ -613,9 +620,43 @@ a == -1    ->    a == - 1
 Each is now a test. The gates were green through all three,
 because a gate compares the pass against itself and none of these was a disagreement with itself.
 
+## Writing about an input with nothing written down to say
+
+`describe` replaced both passes above. It is handed a corpus and a set of claims and nothing else,
+so it cannot know whether it was given a repository, an encyclopedia entry or a novel, and the
+same binary was run over all three without being changed.
+
+Two searches, both from fitkit. A subset search over the claims decides which parts of the input
+are worth stating; a path search over the input's own words decides the wording of each clause.
+A clause is a subsequence of the passage it is about, so it can leave words out and splice one
+passage to another but can never return to a place it has used, which is what makes repetition
+unrepresentable rather than merely expensive.
+
+Three things had to be learned rather than declared, and each was found by reading output that was
+wrong. Where a sentence ends: the mark is attached to the word before it, is followed by a capital
+more often than this text's own rate of capitals, and finishes a passage more often than chance
+would put it there. All three are needed. Two of them admit the backtick that wraps a type name in
+Rust documentation, and the engine then wrote passages made entirely of backticks. Whether a given
+occurrence of that mark ends a sentence is decided per occurrence by what follows it, because the
+dot in `0.5` is the same character as the one ending this sentence, and counting decimals as
+sentence ends put the typical sentence at six words.
+
+Length is not optimised, it is terminated. A model that scores a sentence by its probability always
+prefers the empty one, and a model that pays per word always prefers the longest. Silence here is
+reachable only through the mark this text ends sentences with, and the last step of the search
+admits nothing else, so where a clause stops is a decision the search made.
+
+Measured: fitkit, seven crates and ten thousand words of doc comments, 0.11 seconds. A TypeScript
+application, 0.06. A novel of seven hundred and thirty thousand characters, 0.18. The condition was
+thirty seconds. One number in the old pass was wrong by a factor a reader would notice: asking for
+the exact best subset of fifty four claims is two to the fifty four combinations, and the search
+sat there. It is asked for the exact answer up to twenty claims and a beam beyond, and it reports
+which of the two it used.
+
 ## Reporting comments that say nothing
 
-The same question, asked of comments someone already wrote. `document --noise` reports a doc
+The same question, asked of comments someone already wrote. This pass no longer exists either; the
+paragraph below is what was measured while it did. `document --noise` reported a doc
 comment whose every word carrying a point is a word of the name, of an argument, or of the type
 answered with. Endings that only mark number or person come off both sides first, so a comment
 that calls a thing what it is called says it again however the sentence had to inflect it.

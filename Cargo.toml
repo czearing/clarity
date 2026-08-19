@@ -1,3 +1,6 @@
+[workspace]
+members = ["say"]
+
 [package]
 name = "clarity"
 version = "0.1.0"
@@ -9,6 +12,7 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 
 [dependencies]
+clarity-say = { path = "say" }
 fitkit = { git = "https://github.com/czearing/fitkit" }
 proc-macro2 = { version = "1.0.107", features = ["span-locations"] }
 quote = "1.0.47"

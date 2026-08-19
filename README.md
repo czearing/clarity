@@ -118,7 +118,7 @@ there is counted, held to that count in both directions, and set out in `docs/LI
 | Faulty sentences repaired to clean | 20 of 20, never more than two swaps |
 | Wasteful sentences named | 12 of 12 |
 | Passages whose conventions were recovered | 5 of 5, and the planted fault caught in each |
-| Faults left in seven hundred units of the crate's own prose | 66, bounded in both directions |
+| Faults left in seven hundred units of the crate's own prose | 84, bounded in both directions |
 
 Every example above is compiled and run as a doctest. Timings are what `cargo bench` reports for
 `benches/read.rs`; on the machine that wrote this, checking a short sentence takes about two
@@ -149,50 +149,39 @@ Read `docs/` for the rules and their sources, and for what the engine deliberate
 
 MIT or Apache-2.0.
 
-## Documenting a repository
+## Writing about an input
 
 ```text
-document src/**/*.rs            # report what it would write
-document --write src/**/*.rs    # write it
-document --names src/**/*.rs    # names whose number disagrees with their type
-document --noise src/**/*.rs    # comments that say nothing the declaration does not
+describe src/                   # write about a tree of source
+describe article.txt            # write about a page of prose
+describe book.txt               # write about a book
 ```
 
-The pass reads each file with `syn` and gathers what the code proves: whether a call answers with
-nothing, whether it can fail, whether it changes what it is used on, what it is handed, how many
-of a thing its type holds, and what would stop it. Each finding carries a price for how sure
-it is, and a line is written only where it says something the declaration under it does not.
+One binary, and it is not told which of those it was given. A directory is read as source and a
+file is read as prose, and after that both are the same two values: a corpus of the words the
+input used, and a set of claims about the parts worth writing about. Everything particular to a
+kind of input lives in `read`, and nothing particular to a kind of input lives anywhere else.
 
-Most items get nothing, and that is the point. What survives is the stop a caller has no other
-warning of, written with the cause the source already states:
+Two searches settle what appears. A subset search over the claims decides which parts are worth
+stating, weighing what each part holds against how much of it the input actually describes, and
+against how much vocabulary two parts share. A path search over the input's own words decides the
+wording of each clause: a clause is a subsequence of the text it is about, so a word can be left
+out and one passage can be spliced to another, but a place already used cannot be returned to.
+Saying the same thing twice is not expensive, it is unrepresentable.
 
-```text
-/// # Panics
-///
-/// Panics unless `values.len()` and `n * n` are equal.
-pub fn from_vec(n: usize, values: Vec<f64>) -> Matrix {
-    assert_eq!(values.len(), n * n);
-```
+Nothing here holds a phrasing. There is no sentence written in this repository for an output to
+be filled into, and no list of verbs: a word can only reach a reader if the input put it there,
+which the test suite checks by taking every word written and finding the place it was read from.
+The words that name a property are hashed on the way in, so what a caller calls something cannot
+turn up in a sentence. Where a sentence ends is learned too, from which mark this text attaches to
+its words, is followed by a capital more often than chance would explain, and finishes a passage
+more often than chance would put it there.
 
-Where the code names no cause, as a bare unwrap does not, nothing is written.
+A part the input says nothing about is refused rather than written about, and an input that never
+finishes a sentence is refused rather than guessed at. That is why the engine can be handed a
+framework, a wiki page and a novel without being changed for any of them: it was never taught what
+any of them are.
 
-Nothing about any repository is written into it. There are no phrasings to fill in and no verbs
-listed anywhere. A name is split into words, the signature says whether the call does something or
-names something, and English settles the rest.
-
-Two things bound how wrong it can be. Every sentence it writes is read back by the engine itself
-and thrown away if the engine faults it, so a rule added to the grammar tightens what may be
-written with nothing changing in the generator. And the only edit it can express is inserting
-`///` lines, so touching code is not something it declines to do but something it cannot say.
-
-On a repository of 841 files it read 5010 items in 5.9 seconds and wrote seven comments. `git diff`
-reported twenty-eight lines added and none removed, every one a doc comment, and the repository
-still built and passed its tests. Each of the seven was then read by hand against the body under it
-and found true. Those seven are the whole of what 5010 items licensed, where an earlier and looser
-rule wrote 1948.
-
-A second reader counted the same repository independently. Of six hundred and seventy-one public
-functions, fifteen can stop, and every one of the fifteen is accounted for. Ten now carry a section
-saying so. Three stop on a bare unwrap, which names no cause, so nothing is written. One answers
-with a `Result`, so its declaration already warns the caller. One was handed a message the engine
-would not vouch for as English, and a sentence it cannot read is not written.
+The whole of fitkit, seven crates and ten thousand words of doc comments, is read and written
+about in 0.11 seconds. A TypeScript application takes 0.06, and a novel of seven hundred thousand
+characters takes 0.18.

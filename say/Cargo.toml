@@ -1,0 +1,17 @@
+[package]
+name = "clarity-say"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.83"
+description = "The sentence type. A sentence exists only where a search composed one."
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+fitkit = { git = "https://github.com/czearing/fitkit" }
+
+[lints.rust]
+missing_docs = "deny"
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "deny", priority = -1 }

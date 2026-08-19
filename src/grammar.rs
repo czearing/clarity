@@ -738,6 +738,8 @@ mod tests {
 
     fn tags(text: &str) -> Vec<Tag> {
         recover(&Grammar::default(), &Sentence::read(text))
+            .expect("a reading")
+            .get()
             .controls
             .iter()
             .map(|c| c.params.tag)

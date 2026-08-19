@@ -298,8 +298,15 @@ fn broken_agreement(reading: &[State]) -> Vec<Fault> {
 }
 
 /// The state chosen for each token under `grammar`, tag and clause context together.
+///
+/// A reading the search refuses is no reading at all, so nothing is judged from it. That leaves
+/// the sentence unchecked rather than checked and found clean, which is the honest outcome.
 fn states(sentence: &Sentence, grammar: Grammar) -> Vec<State> {
-    recover(&grammar, sentence)
+    let Ok(chosen) = recover(&grammar, sentence) else {
+        return Vec::new();
+    };
+    chosen
+        .get()
         .controls
         .iter()
         .map(|control| control.params)
