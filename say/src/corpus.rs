@@ -9,7 +9,7 @@
 //! could reach for a word the input never used would be reaching for a word somebody wrote into
 //! the generator, and one word written into the generator is a template with one hole.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use fitkit::Span;
 
@@ -341,11 +341,29 @@ impl Corpus {
             return 0.0;
         }
         let within = f64::from(together) / f64::from(feature_total);
-        let overall = f64::from(self.vocabulary[word.0].seen) / self.stream.len().max(1) as f64;
+        let seen = self.vocabulary[word.0].seen;
+        let overall = f64::from(seen) / self.stream.len().max(1) as f64;
         if overall <= 0.0 {
             return 0.0;
         }
-        (within / overall).max(0.0)
+        let ratio = (within / overall).max(0.0);
+        ratio.powf(discount(together, seen, feature_total))
+    }
+
+    /// How much likelier one word is after another than it is anywhere, discounted the same way.
+    ///
+    /// This is what a clause pays to put one word after another, and it is a ratio rather than a
+    /// probability so that a word which belongs where it is put is free. Charging the probability
+    /// outright would charge every word its own surprise, and the cheapest reading of any text
+    /// would be the shortest one it could end.
+    #[must_use]
+    pub fn association(&self, before: Word, after: Word) -> f64 {
+        let joint = self.follows.get(&(before.0, after.0)).copied().unwrap_or(0);
+        let anywhere = self.commonness(after).max(f64::MIN_POSITIVE);
+        let ratio = self.follows(before, after) / anywhere;
+        let left = self.vocabulary[before.0].seen;
+        let right = self.vocabulary[after.0].seen;
+        ratio.powf(discount(joint, left, right))
     }
 
     /// How commonly the word is used at all, as a share of every token read.
@@ -437,6 +455,7 @@ impl Corpus {
     #[must_use]
     pub fn places_in(&self, feature: Feature, most: usize) -> Vec<Place> {
         let mut found: Vec<(f64, Place)> = Vec::new();
+        let mut said: BTreeSet<usize> = BTreeSet::new();
         for (start, end, features) in &self.passages {
             if !features.contains(&feature) {
                 continue;
@@ -455,6 +474,18 @@ impl Corpus {
                 } else {
                     self.affinity(feature, word) + self.commonness(word)
                 };
+                // A word that says something about the property is given one place and not
+                // every place. Saying it a second time says nothing the first did not, and where
+                // the input repeats itself it is listing or headings rather than sentences. The
+                // words that carry no information are left with all of theirs, because those are
+                // what holds a sentence together and a sentence needs them wherever it needs
+                // them. So repetition is not made expensive, it is made unavailable.
+                if rank.is_finite() && self.affinity(feature, word) > 1.0 {
+                    if said.contains(&token.word) {
+                        continue;
+                    }
+                    said.insert(token.word);
+                }
                 found.push((
                     rank,
                     Place {
@@ -742,6 +773,22 @@ fn tokens(text: &str) -> Vec<(&str, usize)> {
         found.push((&text[start..position], gap));
     }
     found
+}
+
+/// How far to trust a ratio taken from this many observations.
+///
+/// A ratio of rates is at its wildest where it rests on least: a word written once, in one place,
+/// looks infinitely characteristic of that place, and a measure that believes it will write a
+/// sentence out of whatever the input said only once. The correction is the one Pantel and Lin
+/// give for the same fault in pointwise mutual information: weigh the ratio by how many times the
+/// pair was actually seen, and by how often the rarer of the two was seen at all. A ratio resting
+/// on one observation is pulled most of the way back to saying nothing; a ratio resting on twenty
+/// is left almost as it was found. Both numbers are counts of the text, so there is nothing here
+/// to tune.
+fn discount(joint: u32, left: u32, right: u32) -> f64 {
+    let joint = f64::from(joint);
+    let rarer = f64::from(left.min(right));
+    (joint / (joint + 1.0)) * (rarer / (rarer + 1.0))
 }
 
 #[cfg(test)]

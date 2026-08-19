@@ -331,9 +331,9 @@ fn clause(corpus: &Corpus, claim: Claim) -> Answer<Clause> {
                 // the cheapest reading of any text is the shortest one it can end. Against the
                 // ratio a well placed word is free, and how long a clause runs is left to the one
                 // thing that measured it: how long this text's own sentences run.
-                let after = corpus.follows(places[from].word(), places[to].word());
-                let anywhere = corpus.commonness(places[to].word()).max(f64::MIN_POSITIVE);
-                -(after / anywhere).ln()
+                -corpus
+                    .association(places[from].word(), places[to].word())
+                    .ln()
             }
         }
     };
@@ -346,7 +346,11 @@ fn clause(corpus: &Corpus, claim: Claim) -> Answer<Clause> {
         Slot::spoken(
             corpus.spelling(place.word(), step == 0).to_owned(),
             place.source(),
-            corpus.is_attached(place.word()) && step > 0,
+            // Only a mark is written against the word before it. Whether an ordinary word was
+            // written against its neighbour is a fact about the place it came from, and a clause
+            // that spliced it next to a different word has left that place behind: honouring it
+            // there runs two words into one and reports a token nobody wrote.
+            corpus.is_marking(place.word()) && corpus.is_attached(place.word()) && step > 0,
         )
     };
 

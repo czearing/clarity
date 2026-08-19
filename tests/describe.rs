@@ -260,3 +260,48 @@ fn a_large_input_is_written_about_in_the_time_a_reader_will_wait() {
         "writing took {taken:?}, which is longer than anyone waits"
     );
 }
+
+#[test]
+fn the_words_of_a_clause_are_chosen_and_not_copied() {
+    let text = ledger();
+    let reading = read_prose(&text).expect("prose the engine can read");
+    let said = compose(reading.corpus(), reading.claims(), MOST_CLAIMS).expect("something to say");
+    let mut skipped = false;
+    for clause in said.clauses().expect("every clause was composed") {
+        let places: Vec<_> = clause
+            .words()
+            .filter_map(clarity_say::Slot::source)
+            .collect();
+        for pair in places.windows(2) {
+            assert!(
+                pair[1].start >= pair[0].end,
+                "a clause went back over a place it had used"
+            );
+            if pair[1].start > pair[0].end {
+                skipped = true;
+            }
+        }
+    }
+    assert!(
+        skipped,
+        "every clause was a run of the input copied out, so nothing was chosen"
+    );
+}
+
+#[test]
+fn how_much_is_said_is_a_decision_and_not_a_setting() {
+    let text = ledger();
+    let reading = read_prose(&text).expect("prose the engine can read");
+    let all = compose(reading.corpus(), reading.claims(), MOST_CLAIMS).expect("something to say");
+    let one = compose(reading.corpus(), reading.claims(), 1).expect("something to say");
+    let all = all.clauses().expect("every clause was composed").len();
+    let one = one.clauses().expect("every clause was composed").len();
+    assert_eq!(
+        one, 1,
+        "a selection held to one part still stated {one} of them"
+    );
+    assert!(
+        all > one,
+        "the selection stated {all} parts whether or not it was held to fewer"
+    );
+}

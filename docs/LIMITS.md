@@ -646,8 +646,25 @@ prefers the empty one, and a model that pays per word always prefers the longest
 reachable only through the mark this text ends sentences with, and the last step of the search
 admits nothing else, so where a clause stops is a decision the search made.
 
-Measured: fitkit, seven crates and ten thousand words of doc comments, 0.11 seconds. A TypeScript
-application, 0.06. A novel of seven hundred and thirty thousand characters, 0.18. The condition was
+Two faults were left in the first version of this and are worth recording, because both were the
+same mistake. A ratio of rates is wildest where it rests on least, so a word written once looked
+infinitely characteristic of the one place it appeared, and the engine wrote passages out of
+whatever the input said only once. It is now weighed by how many observations it rests on, which is
+the correction Pantel and Lin give for the same fault in pointwise mutual information. And a word
+that says something was being said again and again inside one clause, because increasing position
+allows it; a word that says something now has one place in a clause and not every place, so
+repetition is unavailable rather than expensive, while the words that carry no information keep all
+of theirs because a sentence needs them wherever it needs them.
+
+A third fault was in the rendering rather than the search. Whether a word was written against its
+neighbour is a fact about the place it came from, and a clause that splices it next to a different
+word has left that place behind. Honouring it there ran two words into one and reported four tokens
+nobody had written. Only a mark is written against the word before it.
+
+Measured: fitkit, seven crates and ten thousand words of doc comments, 0.15 seconds. A TypeScript
+application, 0.07. An encyclopedia entry, 0.05. A novel of seven hundred and thirty thousand
+characters, 0.19. Of the four hundred and thirty words written about fitkit every one is written in
+fitkit's source, and fifty six percent of the neighbouring pairs are pairs fitkit itself wrote. The condition was
 thirty seconds. One number in the old pass was wrong by a factor a reader would notice: asking for
 the exact best subset of fifty four claims is two to the fifty four combinations, and the search
 sat there. It is asked for the exact answer up to twenty claims and a beam beyond, and it reports

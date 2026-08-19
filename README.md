@@ -118,7 +118,7 @@ there is counted, held to that count in both directions, and set out in `docs/LI
 | Faulty sentences repaired to clean | 20 of 20, never more than two swaps |
 | Wasteful sentences named | 12 of 12 |
 | Passages whose conventions were recovered | 5 of 5, and the planted fault caught in each |
-| Faults left in seven hundred units of the crate's own prose | 84, bounded in both directions |
+| Faults left in seven hundred units of the crate's own prose | 88, bounded in both directions |
 
 Every example above is compiled and run as a doctest. Timings are what `cargo bench` reports for
 `benches/read.rs`; on the machine that wrote this, checking a short sentence takes about two
@@ -182,6 +182,18 @@ finishes a sentence is refused rather than guessed at. That is why the engine ca
 framework, a wiki page and a novel without being changed for any of them: it was never taught what
 any of them are.
 
-The whole of fitkit, seven crates and ten thousand words of doc comments, is read and written
-about in 0.11 seconds. A TypeScript application takes 0.06, and a novel of seven hundred thousand
-characters takes 0.18.
+Two more things are settled by measurement rather than by rule. A word that says something about a
+part is given one place in a clause and not every place, so saying it twice is unavailable rather
+than expensive, and where the input repeats itself the writing does not. And every ratio is weighed
+by how many observations it rests on, because a word written once in one place looks infinitely
+characteristic of that place, and a measure that believes it writes sentences out of whatever the
+input happened to say once.
+
+The whole of fitkit, seven crates and ten thousand words of doc comments, is read and written about
+in 0.15 seconds. A TypeScript application takes 0.07, an encyclopedia entry 0.05, and a novel of
+seven hundred thousand characters 0.19.
+
+Of the four hundred and thirty words it wrote about fitkit, every one is written in fitkit's
+source, and fifty six percent of the neighbouring pairs are pairs fitkit itself wrote; the rest are
+joins the search made. What it produces is a compression of what each part says about itself, and
+it reads like one: several lines are not sentences a person would sign.
